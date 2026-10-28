@@ -52,9 +52,9 @@ function makeQueue(records) {
     // Only rows with an empty BS cell are eligible for workflow pending checks.
     if (isFilled(val(row, "COL_BS"))) return;
 
-    // Rule 2: Exclude orders whose Order Status is Approved or Revised.
-    var orderStatusForFilter = String(val(row, "Order Status") || val(row, "COL_E") || "").trim().toLowerCase();
-    if (orderStatusForFilter === "approved" || orderStatusForFilter === "revised") return;
+    // Rule 2: Exclude orders whose Order Status is exactly "Approved/Revised".
+    var orderStatusForFilter = String(val(row, "Order Status") || val(row, "COL_L") || "").trim().toLowerCase().replace(/\\s+/g, "");
+    if (orderStatusForFilter === "approved/revised") return;
 
     var pending = null;
 
