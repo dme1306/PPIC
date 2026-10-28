@@ -1,0 +1,1 @@
+{"name":"crius-fms-dashboard","version":"1.0.0","private":true,"description":"GitHub Pages FMS dashboard with authenticated Google Sheets API backend","engines":{"node":">=20"},"dependencies":{"google-auth-library":"^9.15.1","googleapis":"^144.0.0"}}
