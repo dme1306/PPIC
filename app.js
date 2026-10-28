@@ -2,23 +2,23 @@
 "use strict";
 var config = window.FMS_CONFIG || {}, allRows = [], rawRecords = [];
 var steps = [
-{name:"Account Master",planned:"COL_S",status:"COL_U",person:"Account Master"},
-{name:"Payment",planned:"COL_W",status:"COL_Y",person:"Payment"},
-{name:"Legal",planned:"COL_AA",status:"COL_AC",person:"Legal"},
-{name:"F&D Step 4",planned:"COL_AE",status:"COL_AH",person:"F&D"},
-{name:"F&D Step 5",planned:"COL_AI",status:"COL_AK",person:"F&D"},
-{name:"QA",planned:"COL_AN",status:"COL_AP",person:"QA"},
-{name:"Sales Order Step 7",planned:"COL_AS",status:"COL_AU",person:"Sales Order"},
-{name:"Creation Product Master",planned:"COL_AW",status:"COL_AY",person:"Product Master"},
-{name:"F&D Step 9",planned:"COL_AZ",status:"COL_BB",person:"F&D"},
-{name:"Sales Order Step 10",planned:"COL_BC",status:"COL_BE",person:"Sales Order"},
-{name:"Sale Order Check",planned:"COL_BH",status:"COL_BJ",person:"Sales Order"},
-{name:"Sale Order Update in Production",planned:"COL_BK",status:"COL_BM",person:"Production"},
-{name:"Sale Order Confirmation",planned:"COL_BN",status:"COL_BP",person:"Sales Order"},
-{name:"F&D Step 4a",planned:"COL_BY",status:"COL_BW",person:"F&D"},
-{name:"F&D Step 5a",planned:"COL_CD",status:"COL_CB",person:"F&D"},
+{name:"Account Master",planned:"COL_S",status:"COL_U",person:"Acc. Master"},
+{name:"Payment",planned:"COL_W",status:"COL_Y",person:"Payment Status"},
+{name:"Legal",planned:"COL_AA",status:"COL_AC",person:"Docs verification(Legal)"},
+{name:"F&D Step 4",planned:"COL_AE",status:"COL_AH",person:"F&D(STEP 4)"},
+{name:"F&D Step 5",planned:"COL_AI",status:"COL_AK",person:"F&D(STEP 5)"},
+{name:"QA",planned:"COL_AN",status:"COL_AP",person:"Plant QA"},
+{name:"Sales Order Step 7",planned:"COL_AS",status:"COL_AU",person:"Sales Order (for ext prd And Revised)"},
+{name:"Creation Product Master",planned:"COL_AW",status:"COL_AY",person:"Creation Product Master(New Product)"},
+{name:"F&D Step 9",planned:"COL_AZ",status:"COL_BB",person:"Approved Product Master, (New Prd)(Nirmala)"},
+{name:"Sales Order Step 10",planned:"COL_BC",status:"COL_BE",person:"Sales Order(New Prd)"},
+{name:"Sale Order Check",planned:"COL_BH",status:"COL_BJ",person:"Sale Order Checked"},
+{name:"Sale Order Update in Production",planned:"COL_BK",status:"COL_BM",person:"Sale Order Update in Prod. File"},
+{name:"Sale Order Confirmation",planned:"COL_BN",status:"COL_BP",person:"Sale Order Confirmation"},
+{name:"F&D Step 4a",planned:"COL_BY",status:"COL_BW",person:"F&D(STEP 4a)"},
+{name:"F&D Step 5a",planned:"COL_CD",status:"COL_CB",person:"F&D(STEP 5a)"},
 {name:"Lakshmi Step 8a",planned:"COL_CH",status:"COL_CF",person:"Lakshmi"},
-{name:"F&D Step 9a",planned:"COL_CK",status:"COL_CI",person:"F&D"}
+{name:"F&D Step 9a",planned:"COL_CK",status:"COL_CI",person:"F&D(STEP 9a)"}
 ];
 var $ = function(id){return document.getElementById(id);};
 function columnName(index){var name="";while(index>0){var rem=(index-1)%26;name=String.fromCharCode(65+rem)+name;index=Math.floor((index-1)/26);}return name;}
