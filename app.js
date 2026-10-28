@@ -2,28 +2,28 @@
 "use strict";
 var config=window.FMS_CONFIG||{},token="",allRows=[];
 var steps=[
-{name:"Account Master",planned:"Planned(Acc. Master)",status:"Acc. Master",person:"Account Master"},
-{name:"Payment",planned:"Planned(Payment)",status:"Payment Status",person:"Payment"},
-{name:"Legal",planned:"Planned(Legal)",status:"Docs verification(Legal)",person:"Legal"},
-{name:"F&D Step 4",planned:"Planned(F&D)",status:"If New Product (PS)(F&D)",person:"F&D"},
-{name:"F&D Step 5",planned:"Planned(F&D) ",status:"If Rev. Prd (parameter has been changed)(F&D)",person:"F&D"},
-{name:"Plant QA",planned:"Planned (Plant QA)",status:"Approved By (Product Specification) (Plant QA)",person:"Plant QA"},
-{name:"Sales Order",planned:"Planned(Sales Order)",status:"Sales Order (for ext prd And Revised)",person:"Sales Order"},
-{name:"Creation Product Master",planned:"Planned(Creation Product Master)",status:"Creation Product Master(New Product)",person:"Product Master"},
-{name:"F&D Step 9",planned:"Planned(F&D)",status:"Approved Product Master, (New Prd)(Nirmala)",person:"F&D"},
-{name:"Sales Order Step 10",planned:"Planned(Sales Order)",status:"Sales Order(New Prd)",person:"Sales Order"},
-{name:"Sale Order Check",planned:"Planned(Sale Order Check)",status:"Sale Order Checked",person:"Sales Order"},
-{name:"Sale Order Update in Production",planned:"Planned(Sale Order Update in Prod.)",status:"Sale Order Update in Prod. File",person:"Production"},
-{name:"Sale Order Confirmation",planned:"Planned(Sale Order Confirmation)",status:"Sale Order Confirmation",person:"Sales Order"},
-{name:"F&D Step 4a",planned:"Planned",status:"Product Master Review (F&D) (New)",person:"F&D"},
-{name:"F&D Step 5a",planned:"Planned",status:"Product Master Review (F&D) (Revised)",person:"F&D"},
-{name:"Lakshmi Step 8a",planned:"Planned (Lakshmi)",status:"Product Master Recheck (New Product)(Lakshmi)",person:"Lakshmi"},
-{name:"F&D Step 9a",planned:"Planned (F&D)",status:"Reapproved Product Master, (New Prd)(F&D)",person:"F&D"}];
+{name:"Account Master",planned:"COL_S",status:"COL_T",person:"Account Master"},
+{name:"Payment",planned:"COL_W",status:"COL_X",person:"Payment"},
+{name:"Legal",planned:"COL_AA",status:"COL_AB",person:"Legal"},
+{name:"F&D Step 4",planned:"COL_AE",status:"COL_AF",person:"F&D"},
+{name:"F&D Step 5",planned:"COL_AI",status:"COL_AJ",person:"F&D"},
+{name:"Plant QA",planned:"COL_AN",status:"COL_AO",person:"Plant QA"},
+{name:"Sales Order",planned:"COL_AS",status:"COL_AT",person:"Sales Order"},
+{name:"Creation Product Master",planned:"COL_AW",status:"COL_AX",person:"Product Master"},
+{name:"F&D Step 9",planned:"COL_AZ",status:"COL_BA",person:"F&D"},
+{name:"Sales Order Step 10",planned:"COL_BC",status:"COL_BD",person:"Sales Order"},
+{name:"Sale Order Check",planned:"COL_BH",status:"COL_BI",person:"Sales Order"},
+{name:"Sale Order Update in Production",planned:"COL_BK",status:"COL_BL",person:"Production"},
+{name:"Sale Order Confirmation",planned:"COL_BN",status:"COL_BO",person:"Sales Order"},
+{name:"F&D Step 4a",planned:"COL_BY",status:"COL_BW",person:"F&D"},
+{name:"F&D Step 5a",planned:"COL_CD",status:"COL_CB",person:"F&D"},
+{name:"Lakshmi Step 8a",planned:"COL_CH",status:"COL_CF",person:"Lakshmi"},
+{name:"F&D Step 9a",planned:"COL_CK",status:"COL_CI",person:"F&D"}];
 var $=function(id){return document.getElementById(id);};
 function fmtDate(value){if(value===null||value===undefined||value==="")return "—";var d=new Date(value);return isNaN(d.getTime())?String(value):d.toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});}
 function parseDate(value){if(value===null||value===undefined||value==="")return null;var d=new Date(value);return isNaN(d.getTime())?null:d;}
 function val(row,key){if(Object.prototype.hasOwnProperty.call(row,key))return row[key]===null?"":row[key];var target=String(key).trim().toLowerCase();var found=Object.keys(row).find(function(k){return k.trim().toLowerCase()===target;});return found?row[found]:"";}
-function makeQueue(records){var queue=[];records.forEach(function(row){var pending=null;for(var i=0;i<steps.length;i++){var s=steps[i],planned=val(row,s.planned),status=val(row,s.status);if(planned!==""&&planned!==false&&String(status).trim()===""){pending={step:s,planned:planned};break;}}if(!pending)return;var d=parseDate(pending.planned),delay=d?Math.floor((Date.now()-d.getTime())/3600000):0;queue.push({timestamp:val(row,"Timestamp"),ref:val(row,"Ref No."),company:val(row,"Company Name"),product:val(row,"ProductName")||val(row,"Product Name"),orderStatus:val(row,"Order Status"),remarks:val(row,"Remarks"),status:"Pending",person:val(row,"Person Name")||val(row,"Assigned To")||pending.step.person,planned:pending.planned,step:pending.step.name,delayHours:Math.max(0,delay),delayed:!!(d&&d.getTime()<Date.now()),raw:row});});return queue;}
+function makeQueue(records){var queue=[];records.forEach(function(row){var pending=null;for(var i=0;i<steps.length;i++){var s=steps[i],planned=val(row,s.planned),status=val(row,s.status);if(planned!==""&&planned!==false&&String(status).trim()===""){pending={step:s,planned:planned};break;}}if(!pending)return;var d=parseDate(pending.planned),delay=d?Math.floor((Date.now()-d.getTime())/3600000):0;queue.push({timestamp:val(row,"Timestamp"),ref:val(row,"Ref No."),company:val(row,"Company Name"),product:val(row,"ProductName")||val(row,"Product Name"),orderStatus:val(row,"Order Status"),remarks:val(row,"Remarks")||val(row,"COL_BR"),status:"Pending",person:val(row,"COL_BU")||pending.step.person,planned:pending.planned,step:pending.step.name,delayHours:Math.max(0,delay),delayed:!!(d&&d.getTime()<Date.now()),raw:row});});return queue;}
 function esc(value){return String(value===undefined||value===null?"":value).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function render(){var query=$("searchInput").value.trim().toLowerCase(),person=$("personFilter").value,step=$("stepFilter").value,state=$("statusFilter").value;var rows=allRows.filter(function(r){var hay=[r.ref,r.company,r.product,r.remarks,r.person,r.step,r.orderStatus].join(" ").toLowerCase();return(!query||hay.indexOf(query)!==-1)&&(!person||r.person===person)&&(!step||r.step===step)&&(!state||(state==="delayed"?r.delayed:!r.delayed));});$("visibleCount").textContent=rows.length+" records";$("tableSummary").textContent="Showing "+rows.length+" of "+allRows.length+" pending orders";$("tableBody").innerHTML=rows.length?rows.map(function(r){return "<tr><td>"+esc(fmtDate(r.timestamp))+"</td><td><strong>"+esc(r.ref||"—")+"</strong></td><td class='company' title='"+esc(r.company)+"'>"+esc(r.company||"—")+"</td><td title='"+esc(r.product)+"'>"+esc(r.product||"—")+"</td><td>"+esc(r.orderStatus||"—")+"</td><td class='remarks' title='"+esc(r.remarks)+"'>"+esc(r.remarks||"—")+"</td><td><span class='pill "+(r.delayed?"delayed":"ontrack")+"'>"+(r.delayed?"Delayed":"Pending")+"</span></td><td>"+esc(r.person||"Unassigned")+"</td><td>"+esc(fmtDate(r.planned))+"</td><td>"+esc(r.step)+"</td><td class='delay "+(r.delayed?"overdue":"")+"'>"+(r.delayed?esc(r.delayHours+" h"):"0 h")+"</td></tr>";}).join(""):"<tr><td colspan='11' class='empty'>No pending records match these filters.</td></tr>";}
 function fillFilters(){var people=Array.from(new Set(allRows.map(function(r){return r.person;}).filter(Boolean))).sort(),names=Array.from(new Set(allRows.map(function(r){return r.step;})));$("personFilter").innerHTML="<option value=''>All people</option>"+people.map(function(p){return "<option>"+esc(p)+"</option>";}).join("");$("stepFilter").innerHTML="<option value=''>All workflow steps</option>"+names.map(function(n){return "<option>"+esc(n)+"</option>";}).join("");}
