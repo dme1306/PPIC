@@ -47,8 +47,9 @@ function makeQueue(records) {
   var queue = [];
 
   records.forEach(function (row) {
-    // Rule 1: BS is the order-level stop flag. Any value means hide the order.
-    if (isFilled(val(row, "COL_BS"))) return;
+    // Rule 1: BS is the order-level decision. Approved or Cancelled orders are excluded.
+    var bsStatus = String(val(row, "COL_BS") || "").trim().toLowerCase();
+    if (bsStatus === "approved" || bsStatus === "cancel" || bsStatus === "cancelled" || bsStatus === "canceled") return;
 
     var pending = null;
 
