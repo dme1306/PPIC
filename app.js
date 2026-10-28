@@ -1,37 +1,55 @@
 (function () {
 "use strict";
-var config=window.FMS_CONFIG||{},token="",allRows=[];
-var steps=[
-{name:"Account Master",planned:"COL_S",status:"COL_T",person:"Account Master"},
-{name:"Payment",planned:"COL_W",status:"COL_X",person:"Payment"},
-{name:"Legal",planned:"COL_AA",status:"COL_AB",person:"Legal"},
-{name:"F&D Step 4",planned:"COL_AE",status:"COL_AF",person:"F&D"},
-{name:"F&D Step 5",planned:"COL_AI",status:"COL_AJ",person:"F&D"},
-{name:"Plant QA",planned:"COL_AN",status:"COL_AO",person:"Plant QA"},
-{name:"Sales Order",planned:"COL_AS",status:"COL_AT",person:"Sales Order"},
-{name:"Creation Product Master",planned:"COL_AW",status:"COL_AX",person:"Product Master"},
-{name:"F&D Step 9",planned:"COL_AZ",status:"COL_BA",person:"F&D"},
-{name:"Sales Order Step 10",planned:"COL_BC",status:"COL_BD",person:"Sales Order"},
-{name:"Sale Order Check",planned:"COL_BH",status:"COL_BI",person:"Sales Order"},
-{name:"Sale Order Update in Production",planned:"COL_BK",status:"COL_BL",person:"Production"},
-{name:"Sale Order Confirmation",planned:"COL_BN",status:"COL_BO",person:"Sales Order"},
+var config = window.FMS_CONFIG || {}, supabaseClient = null, session = null, allRows = [], rawRecords = [];
+var steps = [
+{name:"Account Master",planned:"COL_S",status:"COL_U",person:"Account Master"},
+{name:"Payment",planned:"COL_W",status:"COL_Y",person:"Payment"},
+{name:"Legal",planned:"COL_AA",status:"COL_AC",person:"Legal"},
+{name:"F&D Step 4",planned:"COL_AE",status:"COL_AH",person:"F&D"},
+{name:"F&D Step 5",planned:"COL_AI",status:"COL_AK",person:"F&D"},
+{name:"QA",planned:"COL_AN",status:"COL_AP",person:"QA"},
+{name:"Sales Order Step 7",planned:"COL_AS",status:"COL_AU",person:"Sales Order"},
+{name:"Creation Product Master",planned:"COL_AW",status:"COL_AY",person:"Product Master"},
+{name:"F&D Step 9",planned:"COL_AZ",status:"COL_BB",person:"F&D"},
+{name:"Sales Order Step 10",planned:"COL_BC",status:"COL_BE",person:"Sales Order"},
+{name:"Sale Order Check",planned:"COL_BH",status:"COL_BJ",person:"Sales Order"},
+{name:"Sale Order Update in Production",planned:"COL_BK",status:"COL_BM",person:"Production"},
+{name:"Sale Order Confirmation",planned:"COL_BN",status:"COL_BP",person:"Sales Order"},
 {name:"F&D Step 4a",planned:"COL_BY",status:"COL_BW",person:"F&D"},
 {name:"F&D Step 5a",planned:"COL_CD",status:"COL_CB",person:"F&D"},
 {name:"Lakshmi Step 8a",planned:"COL_CH",status:"COL_CF",person:"Lakshmi"},
-{name:"F&D Step 9a",planned:"COL_CK",status:"COL_CI",person:"F&D"}];
-var $=function(id){return document.getElementById(id);};
-function fmtDate(value){if(value===null||value===undefined||value==="")return "—";var d=new Date(value);return isNaN(d.getTime())?String(value):d.toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});}
-function parseDate(value){if(value===null||value===undefined||value==="")return null;var d=new Date(value);return isNaN(d.getTime())?null:d;}
+{name:"F&D Step 9a",planned:"COL_CK",status:"COL_CI",person:"F&D"}
+];
+var $ = function(id){return document.getElementById(id);};
+function columnName(index){var name="";while(index>0){var rem=(index-1)%26;name=String.fromCharCode(65+rem)+name;index=Math.floor((index-1)/26);}return name;}
+function rowsFromValues(values){
+ if(!Array.isArray(values)||!values.length)return [];
+ var headers=values[0]||[];
+ return values.slice(1).filter(function(r){return Array.isArray(r)&&r.some(function(v){return v!==""&&v!==null&&v!==undefined;});}).map(function(valuesRow){
+  var obj={};
+  valuesRow.forEach(function(value,i){obj["COL_"+columnName(i+1)]=value===null||value===undefined?"":value;if(headers[i])obj[String(headers[i]).trim()]=value===null||value===undefined?"":value;});
+  return obj;
+ });
+}
+function fmtDate(value){if(value===null||value===undefined||value==="")return "—";var d=parseDate(value);return !d?String(value):d.toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});}
+function parseDate(value){
+ if(value===null||value===undefined||value==="")return null;
+ if(typeof value==="number"&&value>20000&&value<100000){return new Date(Date.UTC(1899,11,30)+value*86400000);}
+ var s=String(value).trim(), d=new Date(s);if(!isNaN(d.getTime()))return d;
+ var m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);if(m){var year=Number(m[3]);if(year<100)year+=2000;d=new Date(year,Number(m[2])-1,Number(m[1]));return isNaN(d.getTime())?null:d;}
+ return null;
+}
 function calculateDelay(planned){var d=parseDate(planned);if(!d)return null;var now=new Date(),roundedDays=Math.round((now.getTime()-d.getTime())/86400000);if(roundedDays>0)return roundedDays*24-(24-d.getHours()-(24-now.getHours()));return roundedDays*24+(24-d.getHours()-(24-now.getHours()));}
 function val(row,key){if(Object.prototype.hasOwnProperty.call(row,key))return row[key]===null?"":row[key];var target=String(key).trim().toLowerCase();var found=Object.keys(row).find(function(k){return k.trim().toLowerCase()===target;});return found?row[found]:"";}
-function makeQueue(records){var queue=[];records.forEach(function(row){var pending=null;for(var i=0;i<steps.length;i++){var s=steps[i],planned=val(row,s.planned),status=val(row,s.status);if(planned!==""&&planned!==false&&String(status).trim()===""){pending={step:s,planned:planned};break;}}if(!pending)return;var d=parseDate(pending.planned),delay=calculateDelay(pending.planned);queue.push({timestamp:val(row,"Timestamp"),ref:val(row,"Ref No."),company:val(row,"Company Name"),product:val(row,"ProductName")||val(row,"Product Name"),orderStatus:val(row,"Order Status"),remarks:val(row,"Remarks")||val(row,"COL_BR"),status:val(row,"COL_BS")||val(row,"Status")||"Pending",person:val(row,"COL_BU")||pending.step.person,planned:pending.planned,step:pending.step.name,delayHours:delay===null?0:delay,delayed:delay!==null&&delay>0,raw:row});});return queue;}
+function isFilled(value){return value!==null&&value!==undefined&&String(value).trim()!==""&&value!==false;}
+function makeQueue(records){var queue=[];records.forEach(function(row){var pending=null;for(var i=0;i<steps.length;i++){var s=steps[i],planned=val(row,s.planned),status=val(row,s.status);if(isFilled(planned)&&!isFilled(status)){pending={step:s,planned:planned};break;}}if(!pending)return;var delay=calculateDelay(pending.planned);queue.push({timestamp:val(row,"Timestamp")||val(row,"COL_A"),ref:val(row,"Ref No.")||val(row,"COL_B"),company:val(row,"Company Name")||val(row,"COL_C"),product:val(row,"Product Name")||val(row,"ProductName")||val(row,"COL_D"),orderStatus:val(row,"Order Status")||val(row,"COL_E"),remarks:val(row,"Remarks")||val(row,"COL_BR"),status:val(row,"COL_BS")||val(row,"Status")||"Pending",person:val(row,"COL_BU")||pending.step.person,planned:pending.planned,step:pending.step.name,delayHours:delay===null?0:delay,delayed:delay!==null&&delay>0,raw:row});});return queue;}
 function esc(value){return String(value===undefined||value===null?"":value).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function render(){var query=$("searchInput").value.trim().toLowerCase(),person=$("personFilter").value,step=$("stepFilter").value,state=$("statusFilter").value;var rows=allRows.filter(function(r){var hay=[r.ref,r.company,r.product,r.remarks,r.person,r.step,r.orderStatus].join(" ").toLowerCase();return(!query||hay.indexOf(query)!==-1)&&(!person||r.person===person)&&(!step||r.step===step)&&(!state||(state==="delayed"?r.delayed:!r.delayed));});$("visibleCount").textContent=rows.length+" records";$("tableSummary").textContent="Showing "+rows.length+" of "+allRows.length+" pending orders";$("tableBody").innerHTML=rows.length?rows.map(function(r){return "<tr><td>"+esc(fmtDate(r.timestamp))+"</td><td><strong>"+esc(r.ref||"—")+"</strong></td><td class='company' title='"+esc(r.company)+"'>"+esc(r.company||"—")+"</td><td title='"+esc(r.product)+"'>"+esc(r.product||"—")+"</td><td>"+esc(r.orderStatus||"—")+"</td><td class='remarks' title='"+esc(r.remarks)+"'>"+esc(r.remarks||"—")+"</td><td><span class='pill "+(r.delayed?"delayed":"ontrack")+"'>"+esc(r.status||"Pending")+"</span></td><td>"+esc(r.person||"Unassigned")+"</td><td>"+esc(fmtDate(r.planned))+"</td><td>"+esc(r.step)+"</td><td class='delay "+(r.delayed?"overdue":"")+"'>"+esc(r.delayHours+" h")+"</td></tr>";}).join(""):"<tr><td colspan='11' class='empty'>No pending records match these filters.</td></tr>";}
 function fillFilters(){var people=Array.from(new Set(allRows.map(function(r){return r.person;}).filter(Boolean))).sort(),names=Array.from(new Set(allRows.map(function(r){return r.step;})));$("personFilter").innerHTML="<option value=''>All people</option>"+people.map(function(p){return "<option>"+esc(p)+"</option>";}).join("");$("stepFilter").innerHTML="<option value=''>All workflow steps</option>"+names.map(function(n){return "<option>"+esc(n)+"</option>";}).join("");}
 function updateMetrics(records,queue){$("totalOrders").textContent=records.length.toLocaleString("en-IN");$("pendingTasks").textContent=queue.length.toLocaleString("en-IN");$("delayedTasks").textContent=queue.filter(function(r){return r.delayed;}).length.toLocaleString("en-IN");$("peopleCount").textContent=new Set(queue.map(function(r){return r.person;}).filter(Boolean)).size.toLocaleString("en-IN");$("rowCount").textContent="· "+records.length.toLocaleString("en-IN")+" orders";}
 function showError(message){$("dashboard").hidden=true;$("errorPanel").hidden=false;$("errorText").textContent=message;}
-function loadData(){if(!token)return;if(!config.API_BASE_URL||config.API_BASE_URL.indexOf("YOUR-VERCEL")!==-1){showError("Set API_BASE_URL in config.js after deploying the secure Vercel backend.");return;}$("refreshBtn").disabled=true;$("refreshBtn").textContent="Loading…";fetch(config.API_BASE_URL,{method:"GET",headers:{"Authorization":"Bearer "+token},cache:"no-store"}).then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();}).then(function(body){var records=Array.isArray(body.rows)?body.rows:[];allRows=makeQueue(records);fillFilters();updateMetrics(records,allRows);$("loginPanel").hidden=true;$("errorPanel").hidden=true;$("dashboard").hidden=false;$("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});render();}).catch(function(error){showError(error.message||"Unknown connection error");}).finally(function(){$("refreshBtn").disabled=false;$("refreshBtn").textContent="↻ Refresh";});}
-window.handleGoogleCredential=function(response){token=response.credential||"";if(!token)return;$("authMessage").textContent="Signed in. Loading authorized FMS data…";loadData();};
-function initGoogle(){if(!config.GOOGLE_CLIENT_ID||config.GOOGLE_CLIENT_ID.indexOf("YOUR_GOOGLE")!==-1){$("authMessage").textContent="Add your Google OAuth Client ID to config.js. Setup steps are in README.md.";return;}var attempts=0,timer=setInterval(function(){attempts++;if(window.google&&google.accounts&&google.accounts.id){clearInterval(timer);google.accounts.id.initialize({client_id:config.GOOGLE_CLIENT_ID,callback:window.handleGoogleCredential,auto_select:false});google.accounts.id.renderButton($("googleButton"),{theme:"outline",size:"large",shape:"pill",text:"signin_with",width:230});$("authMessage").textContent="Sign in with an email address authorized for this dashboard.";}else if(attempts>40){clearInterval(timer);$("authMessage").textContent="Google sign-in could not load. Check your network or browser settings."; }},250);}
-["searchInput","personFilter","stepFilter","statusFilter"].forEach(function(id){$(id).addEventListener("input",render);$(id).addEventListener("change",render);});$("refreshBtn").addEventListener("click",loadData);$("retryBtn").addEventListener("click",loadData);$("clearFilters").addEventListener("click",function(){$("searchInput").value="";$("personFilter").value="";$("stepFilter").value="";$("statusFilter").value="";render();});initGoogle();setInterval(function(){if(token&&!$("dashboard").hidden)render();},60000);
+function loadData(){if(!session||!session.access_token)return;$("refreshBtn").disabled=true;$("refreshBtn").textContent="Loading…";fetch(config.SUPABASE_URL+"/functions/v1/"+(config.FUNCTION_NAME||"ppic-fms"),{method:"GET",headers:{"Authorization":"Bearer "+session.access_token,"apikey":config.SUPABASE_PUBLISHABLE_KEY},cache:"no-store"}).then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();}).then(function(body){var values=Array.isArray(body.values)?body.values:[];rawRecords=rowsFromValues(values);allRows=makeQueue(rawRecords);fillFilters();updateMetrics(rawRecords,allRows);$("loginPanel").hidden=true;$("errorPanel").hidden=true;$("dashboard").hidden=false;$("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});render();}).catch(function(error){showError(error.message||"Unknown connection error");}).finally(function(){$("refreshBtn").disabled=false;$("refreshBtn").textContent="↻ Refresh";});}
+async function signIn(){try{$("authMessage").textContent="Redirecting to Google sign-in…";var result=await supabaseClient.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin+window.location.pathname,queryParams:{access_type:"offline",prompt:"select_account"}}});if(result.error)throw result.error;}catch(error){$("authMessage").textContent=error.message||"Unable to start Google sign-in.";}}
+async function init(){if(!window.supabase||!config.SUPABASE_URL||!config.SUPABASE_PUBLISHABLE_KEY){$("authMessage").textContent="Supabase frontend configuration is missing. Check config.js and the Supabase JS library.";return;}supabaseClient=window.supabase.createClient(config.SUPABASE_URL,config.SUPABASE_PUBLISHABLE_KEY);$("googleButton").innerHTML="<button class='btn secondary' id='signInButton' type='button'>Continue with Google</button>";$("signInButton").addEventListener("click",signIn);var result=await supabaseClient.auth.getSession();session=result.data.session;if(session){$("loginPanel").hidden=true;loadData();}else{$("loginPanel").hidden=false;$("authMessage").textContent="Sign in with a Google email address authorized for this dashboard.";}supabaseClient.auth.onAuthStateChange(function(_event,newSession){session=newSession;if(session){$("loginPanel").hidden=true;loadData();}else{$("dashboard").hidden=true;$("loginPanel").hidden=false;}});}
+["searchInput","personFilter","stepFilter","statusFilter"].forEach(function(id){$(id).addEventListener("input",render);$(id).addEventListener("change",render);});$("refreshBtn").addEventListener("click",loadData);$("retryBtn").addEventListener("click",loadData);$("clearFilters").addEventListener("click",function(){$("searchInput").value="";$("personFilter").value="";$("stepFilter").value="";$("statusFilter").value="";render();});init().catch(function(error){$("authMessage").textContent=error.message||"Could not initialize Supabase sign-in.";});setInterval(function(){if(session&&!$("dashboard").hidden)render();},60000);
 })();
