@@ -40,6 +40,7 @@ function parseDate(value){
  return null;
 }
 function calculateDelay(planned){var d=parseDate(planned);if(!d)return null;var now=new Date(),roundedDays=Math.round((now.getTime()-d.getTime())/86400000);if(roundedDays>0)return roundedDays*24-(24-d.getHours()-(24-now.getHours()));return roundedDays*24+(24-d.getHours()-(24-now.getHours()));}
+function isPastPlannedDate(planned){var d=parseDate(planned);if(!d)return false;var now=new Date();return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime()<new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();}
 function headerKey(value){return String(value===null||value===undefined?"":value).trim().toLowerCase().replace(/[^a-z0-9]/g,"");}
 function val(row,key){if(Object.prototype.hasOwnProperty.call(row,key))return row[key]===null?"":row[key];var target=headerKey(key);var found=Object.keys(row).find(function(k){return headerKey(k)===target;});return found?((row[found]===null||row[found]===undefined)?"":row[found]):"";}
 function isFilled(value){return value!==null&&value!==undefined&&String(value).trim()!==""&&value!==false;}
@@ -92,7 +93,7 @@ function makeQueue(records) {
       planned: pending.planned,
       step: pending.step.name,
       delayHours: delay === null ? 0 : delay,
-      delayed: delay !== null && delay > 0,
+      delayed: isPastPlannedDate(pending.planned),
       raw: row
     });
   });
