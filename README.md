@@ -1,46 +1,37 @@
 # Crius FMS Dashboard
 
-Interactive dashboard hosted on GitHub Pages, with a Vercel serverless API reading only the Data tab from the FMS Google Sheet.
+Static dashboard deployed with GitHub Pages. Supabase Auth handles Google sign-in and a Supabase Edge Function securely reads the Google Sheets `Data` tab.
 
-## Included
-- Search, person/step/status filters, KPI cards and workflow queue
-- Google Sign-In ID-token verification on the backend
-- Email allowlist for dashboard access
-- Google Sheets read-only API scope; no spreadsheet write operations
-- Service-account credentials remain in Vercel environment variables, never in frontend files
-- Data source is the Data tab only
+## Architecture
+- GitHub Pages: public static frontend at https://dme1306.github.io/PPIC/
+- Supabase Auth: Google OAuth login
+- Supabase Edge Function: `ppic-fms`
+- Google Sheets: reads `Data!A1:DF` only, using a server-side service account with read-only scope
 
-## 1. Google Sheet access
-The spreadsheet ID is configured as 1YSO4mq_bNNJo_g9-k_FWvVbRM6OPXZQ678ec0at25RA. Create or use a Google Cloud service account, enable the Google Sheets API, and share the spreadsheet with the service-account email as Viewer. Do not share a private key in GitHub or chat.
+## Required Supabase Edge Function secrets
+- `GOOGLE_SHEET_ID`: `1YSO4mq_bNNJo_g9-k_FWvVbRM6OPXZQ678ec0at25RA`
+- `GOOGLE_SERVICE_ACCOUNT_JSON`: complete JSON key from a Google Cloud service account
+- `ALLOWED_EMAILS`: comma-separated email addresses permitted to use the dashboard
 
-## 2. Google OAuth sign-in
-Create a Google OAuth 2.0 Web application client. Add the GitHub Pages origin (for example https://dme1306.github.io) to Authorized JavaScript origins. Use the same OAuth Client ID in config.js and Vercel.
+The Google Sheet must be shared with the service account's `client_email` as Viewer. Enable Google Sheets API in Google Cloud. Never commit service-account JSON, private keys, or OAuth client secrets.
 
-## 3. Deploy the API on Vercel
-Import this repository into Vercel. Add these environment variables in the Vercel project settings for Production (and Preview if needed):
-- GOOGLE_SHEET_ID = 1YSO4mq_bNNJo_g9-k_FWvVbRM6OPXZQ678ec0at25RA
-- GOOGLE_CLIENT_ID = the Google OAuth Web Client ID
-- GOOGLE_SERVICE_ACCOUNT_JSON = the complete service-account JSON object, as one environment-variable value
-- ALLOWED_EMAILS = comma-separated Google email addresses allowed to see the dashboard
-- ALLOWED_ORIGINS = https://dme1306.github.io (add local development origin only if needed)
+## Google sign-in setup
+1. In Supabase Dashboard → Authentication → Sign In / Providers, enable Google and set the Google OAuth Client ID and Client Secret.
+2. In Google Cloud Console → APIs & Services → Credentials, create/use an OAuth Web application client.
+3. Add `https://wgrlwgaymepehcpmizdl.supabase.co/auth/v1/callback` as an Authorized redirect URI in the Google OAuth client.
+4. In Supabase Authentication URL Configuration, set Site URL to `https://dme1306.github.io/PPIC/` and add that same URL to Redirect URLs.
+5. Add the dashboard URL as an Authorized JavaScript origin if Google Cloud requests it. If Google's consent screen is in Testing mode, add authorized users as test users.
 
-Redeploy after adding variables. The API endpoint will be https://YOUR-VERCEL-PROJECT.vercel.app/api/fms.
+## Frontend configuration
+`config.js` contains only the Supabase project URL and publishable key. A publishable key is designed for browser use; never use a Supabase service-role/secret key in this file.
 
-## 4. Configure GitHub Pages frontend
-Edit config.js and replace API_BASE_URL with the deployed Vercel API URL, and GOOGLE_CLIENT_ID with the OAuth Web Client ID. These are public configuration values, not secrets. Never add service-account JSON or a private key to config.js.
-
-In GitHub, open Settings → Pages and publish from the main branch, root (/). The site URL will usually be https://dme1306.github.io/PPIC/ for this repository.
-
-## 5. Verify the sheet
-The backend service account must have Viewer access to the spreadsheet. The backend intentionally reads Data!A1:DF only. Other tabs are not queried.
+## GitHub Pages
+GitHub Actions workflow `.github/workflows/pages.yml` publishes `index.html`, `app.js`, `styles.css`, and `config.js` on pushes to `main`. In GitHub repository Settings → Pages, set the build/deployment source to GitHub Actions.
 
 ## Pending-step logic
-The dashboard checks the ordered step definitions in app.js. A step is pending only when its planned field is non-empty and its matching status/confirmation field is blank. The first pending step per order is shown. The supplied workbook contains repeated and helper columns, so verify the step-to-status mapping against the live sheet before relying on it for operational decisions.
+The dashboard shows only the first pending step for each order. A step is pending when its planned/assignment field is non-empty and its matching confirmation/status field is blank. Column mappings are maintained in `app.js`; confirm the unusual later-stage pairs against the live sheet headers before relying on the queue for operational decisions.
 
-Delay Hours are calculated from the pending step's planned date and current time. They refresh on the page every minute; refresh the data to retrieve new sheet values.
-
-## Security notes
-- Do not commit credentials, private keys, OAuth client secrets, or tokens.
-- The Google service account has read-only scope.
-- The backend returns data only after verifying a Google ID token and checking ALLOWED_EMAILS.
-- Set ALLOWED_EMAILS to specific authorized people; do not leave it blank.
+## Security
+- The Edge Function validates the Supabase access token and checks `ALLOWED_EMAILS`.
+- Google Sheets access is read-only and service-account credentials stay in Supabase secrets.
+- Do not publish access tokens, service-role keys, or service-account JSON.
