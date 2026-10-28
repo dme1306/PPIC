@@ -1,5 +1,6 @@
-/* Public frontend settings only. Never put service-account keys or secrets here. */
+/* Public frontend settings only. The publishable key is safe for browser use; never put service-role keys or private credentials here. */
 window.FMS_CONFIG = {
-  API_BASE_URL: "https://YOUR-VERCEL-BACKEND.vercel.app/api/fms",
-  GOOGLE_CLIENT_ID: "YOUR_GOOGLE_OAUTH_CLIENT_ID"
+  SUPABASE_URL: "https://wgrlwgaymepehcpmizdl.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_3xNYTJ4fWVXcZTjsV-WaNw_k3nxPekC",
+  FUNCTION_NAME: "ppic-fms"
 };
