@@ -39,6 +39,7 @@ function parseDate(value){
  var m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);if(m){var year=Number(m[3]);if(year<100)year+=2000;d=new Date(year,Number(m[2])-1,Number(m[1]));return isNaN(d.getTime())?null:d;}
  return null;
 }
+function calculateDelay(planned){var d=parseDate(planned);if(!d)return null;var now=new Date(),roundedDays=Math.round((now.getTime()-d.getTime())/86400000);if(roundedDays>0)return roundedDays*24-(24-d.getHours()-(24-now.getHours()));return roundedDays*24+(24-d.getHours()-(24-now.getHours()));}
 function headerKey(value){return String(value===null||value===undefined?"":value).trim().toLowerCase().replace(/[^a-z0-9]/g,"");}
 function val(row,key){if(Object.prototype.hasOwnProperty.call(row,key))return row[key]===null?"":row[key];var target=headerKey(key);var found=Object.keys(row).find(function(k){return headerKey(k)===target;});return found?((row[found]===null||row[found]===undefined)?"":row[found]):"";}
 function isFilled(value){return value!==null&&value!==undefined&&String(value).trim()!==""&&value!==false;}
@@ -79,6 +80,7 @@ function makeQueue(records) {
     // No pending step found: never include this order in the dashboard.
     if (!pending) return;
 
+    var delay = calculateDelay(pending.planned);
     queue.push({
       timestamp: val(row, "Timestamp") || val(row, "COL_A"),
       ref: val(row, "Ref No.") || val(row, "COL_B"),
@@ -89,6 +91,8 @@ function makeQueue(records) {
       person: val(row, "Person Name") || val(row, "COL_BU") || pending.step.person,
       planned: pending.planned,
       step: pending.step.name,
+      delayHours: delay === null ? 0 : delay,
+      delayed: delay !== null && delay > 0,
       raw: row
     });
   });
@@ -96,11 +100,11 @@ function makeQueue(records) {
   return queue;
 }
 function esc(value){return String(value===undefined||value===null?"":value).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
-function render(){var query=$("searchInput").value.trim().toLowerCase(),person=$("personFilter").value,step=$("stepFilter").value;var rows=allRows.filter(function(r){var hay=[r.ref,r.company,r.product,r.remarks,r.person,r.step,r.orderStatus].join(" ").toLowerCase();return(!query||hay.indexOf(query)!==-1)&&(!person||r.person===person)&&(!step||r.step===step);});$("visibleCount").textContent=rows.length+" records";$("tableSummary").textContent="Showing "+rows.length+" of "+allRows.length+" pending orders";$("tableBody").innerHTML=rows.length?rows.map(function(r){return "<tr><td>"+esc(fmtDate(r.timestamp))+"</td><td><strong>"+esc(r.ref||"—")+"</strong></td><td class='company' title='"+esc(r.company)+"'>"+esc(r.company||"—")+"</td><td title='"+esc(r.product)+"'>"+esc(r.product||"—")+"</td><td>"+esc(r.orderStatus||"—")+"</td><td class='remarks' title='"+esc(r.remarks)+"'>"+esc(r.remarks||"—")+"</td><td>"+esc(r.person||"Unassigned")+"</td><td>"+esc(fmtDate(r.planned))+"</td><td>"+esc(r.step)+"</td></tr>";}).join(""):"<tr><td colspan='9' class='empty'>No pending records match these filters.</td></tr>";}
+function render(){var query=$("searchInput").value.trim().toLowerCase(),person=$("personFilter").value,step=$("stepFilter").value,state=$("statusFilter").value;var rows=allRows.filter(function(r){var hay=[r.ref,r.company,r.product,r.remarks,r.person,r.step,r.orderStatus].join(" ").toLowerCase();return(!query||hay.indexOf(query)!==-1)&&(!person||r.person===person)&&(!step||r.step===step)&&(!state||(state==="delayed"?r.delayed:!r.delayed));});$("visibleCount").textContent=rows.length+" records";$("tableSummary").textContent="Showing "+rows.length+" of "+allRows.length+" pending orders";$("tableBody").innerHTML=rows.length?rows.map(function(r){return "<tr><td>"+esc(fmtDate(r.timestamp))+"</td><td><strong>"+esc(r.ref||"—")+"</strong></td><td class='company' title='"+esc(r.company)+"'>"+esc(r.company||"—")+"</td><td title='"+esc(r.product)+"'>"+esc(r.product||"—")+"</td><td>"+esc(r.orderStatus||"—")+"</td><td class='remarks' title='"+esc(r.remarks)+"'>"+esc(r.remarks||"—")+"</td><td>"+esc(r.person||"Unassigned")+"</td><td>"+esc(fmtDate(r.planned))+"</td><td>"+esc(r.step)+"</td><td class='delay "+(r.delayed?"overdue":"")+"'>"+esc(r.delayHours+" h")+"</td></tr>";}).join(""):"<tr><td colspan='10' class='empty'>No pending records match these filters.</td></tr>";}
 function fillFilters(){var people=Array.from(new Set(allRows.map(function(r){return r.person;}).filter(Boolean))).sort(),names=Array.from(new Set(allRows.map(function(r){return r.step;})));$("personFilter").innerHTML="<option value=''>All people</option>"+people.map(function(p){return "<option>"+esc(p)+"</option>";}).join("");$("stepFilter").innerHTML="<option value=''>All workflow steps</option>"+names.map(function(n){return "<option>"+esc(n)+"</option>";}).join("");}
-function updateMetrics(records,queue){$("totalOrders").textContent=records.length.toLocaleString("en-IN");$("pendingTasks").textContent=queue.length.toLocaleString("en-IN");$("pendingSteps").textContent=new Set(queue.map(function(r){return r.step;}).filter(Boolean)).size.toLocaleString("en-IN");$("peopleCount").textContent=new Set(queue.map(function(r){return r.person;}).filter(Boolean)).size.toLocaleString("en-IN");$("rowCount").textContent="· "+records.length.toLocaleString("en-IN")+" orders";}
+function updateMetrics(records,queue){$("totalOrders").textContent=records.length.toLocaleString("en-IN");$("pendingTasks").textContent=queue.length.toLocaleString("en-IN");$("delayedTasks").textContent=queue.filter(function(r){return r.delayed;}).length.toLocaleString("en-IN");$("peopleCount").textContent=new Set(queue.map(function(r){return r.person;}).filter(Boolean)).size.toLocaleString("en-IN");$("rowCount").textContent="· "+records.length.toLocaleString("en-IN")+" orders";}
 function showError(message){$("dashboard").hidden=true;$("errorPanel").hidden=false;$("errorText").textContent=message;}
 function loadData(){$("refreshBtn").disabled=true;$("refreshBtn").textContent="Loading…";fetch(config.SUPABASE_URL+"/functions/v1/"+(config.FUNCTION_NAME||"ppic-fms"),{method:"GET",headers:{"apikey":config.SUPABASE_PUBLISHABLE_KEY},cache:"no-store"}).then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();}).then(function(body){var values=Array.isArray(body.values)?body.values:[];rawRecords=rowsFromValues(values);allRows=makeQueue(rawRecords);fillFilters();updateMetrics(rawRecords,allRows);$("errorPanel").hidden=true;$("dashboard").hidden=false;$("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});render();}).catch(function(error){showError(error.message||"Unknown connection error");}).finally(function(){$("refreshBtn").disabled=false;$("refreshBtn").textContent="↻ Refresh";});}
 function init(){loadData();}
-["searchInput","personFilter","stepFilter"].forEach(function(id){$(id).addEventListener("input",render);$(id).addEventListener("change",render);});$("refreshBtn").addEventListener("click",loadData);$("retryBtn").addEventListener("click",loadData);$("clearFilters").addEventListener("click",function(){$("searchInput").value="";$("personFilter").value="";$("stepFilter").value="";render();});init();setInterval(function(){if(!$("dashboard").hidden)render();},60000);
+["searchInput","personFilter","stepFilter","statusFilter"].forEach(function(id){$(id).addEventListener("input",render);$(id).addEventListener("change",render);});$("refreshBtn").addEventListener("click",loadData);$("retryBtn").addEventListener("click",loadData);$("clearFilters").addEventListener("click",function(){$("searchInput").value="";$("personFilter").value="";$("stepFilter").value="";$("statusFilter").value="";render();});init();setInterval(function(){if(!$("dashboard").hidden)render();},60000);
 })();
