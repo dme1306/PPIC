@@ -48,9 +48,9 @@ function makeQueue(records) {
   var queue = [];
 
   records.forEach(function (row) {
-    // Rule 1: BS is the order-level decision. Approved or Cancelled orders are excluded.
-    var bsStatus = String(val(row, "COL_BS") || "").trim().toLowerCase();
-    if (bsStatus === "approved" || bsStatus === "cancel" || bsStatus === "cancelled" || bsStatus === "canceled") return;
+    // Rule 1: Exclude the order whenever column BS contains any non-blank value.
+    // Only rows with an empty BS cell are eligible for workflow pending checks.
+    if (isFilled(val(row, "COL_BS"))) return;
 
     var pending = null;
 
