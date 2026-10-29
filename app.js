@@ -1,6 +1,6 @@
 (function () {
 "use strict";
-var config = window.FMS_CONFIG || {}, allRows = [], rawRecords = [];
+var config = window.FMS_CONFIG || {}, allRows = [], rawRecords = [], specRows = [], activeView = "overview";
 var steps = [
 {name:"Step 1",planned:"COL_S",status:"COL_U",person:"Acc. Master"},
 {name:"Step 2",planned:"COL_W",status:"COL_Y",person:"Payment Status"},
@@ -108,6 +108,43 @@ function fillFilters(){var people=Array.from(new Set(allRows.map(function(r){ret
 function updateMetrics(records,queue){$("totalOrders").textContent=records.length.toLocaleString("en-IN");$("pendingTasks").textContent=queue.length.toLocaleString("en-IN");$("delayedTasks").textContent=queue.filter(function(r){return r.delayed;}).length.toLocaleString("en-IN");$("peopleCount").textContent=new Set(queue.map(function(r){return r.person;}).filter(Boolean)).size.toLocaleString("en-IN");$("rowCount").textContent="· "+records.length.toLocaleString("en-IN")+" orders";}
 function showError(message){$("dashboard").hidden=true;$("errorPanel").hidden=false;$("errorText").textContent=message;}
 function loadData(){$("refreshBtn").disabled=true;$("refreshBtn").textContent="Loading…";fetch(config.SUPABASE_URL+"/functions/v1/"+(config.FUNCTION_NAME||"ppic-fms"),{method:"GET",headers:{"apikey":config.SUPABASE_PUBLISHABLE_KEY},cache:"no-store"}).then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();}).then(function(body){var values=Array.isArray(body.values)?body.values:[];rawRecords=rowsFromValues(values);allRows=makeQueue(rawRecords);fillFilters();updateMetrics(rawRecords,allRows);$("errorPanel").hidden=true;$("dashboard").hidden=false;$("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});render();}).catch(function(error){showError(error.message||"Unknown connection error");}).finally(function(){$("refreshBtn").disabled=false;$("refreshBtn").textContent="↻ Refresh";});}
+
+function setView(view){
+ activeView=view;
+ $("dashboard").hidden=view!=="overview";
+ $("specApprovalPanel").hidden=view!=="spec";
+ $("errorPanel").hidden=true;
+ $("navOverview").classList.toggle("active",view==="overview");
+ $("navSpecApproval").classList.toggle("active",view==="spec");
+ $("refreshBtn").hidden=view!=="overview";
+ $("lastUpdated").hidden=view==="spec";
+ if(view==="spec"&&!specRows.length)loadSpecData();
+}
+function renderSpec(){
+ var query=$("specSearchInput").value.trim().toLowerCase();
+ var rows=specRows.filter(function(r){return !query||r.slice(0,13).join(" ").toLowerCase().indexOf(query)!==-1;});
+ $("specVisibleCount").textContent=rows.length+" records";
+ $("specTableSummary").textContent="Showing "+rows.length+" of "+specRows.length+" matching records";
+ $("specTableBody").innerHTML=rows.length?rows.map(function(r){return "<tr>"+r.slice(0,13).map(function(v){return "<td>"+esc(v||"—")+"</td>";}).join("")+"</tr>";}).join(""):"<tr><td colspan='13' class='empty'>No spec approval records match these filters.</td></tr>";
+}
+function loadSpecData(){
+ $("specRefreshBtn").disabled=true;$("specRefreshBtn").textContent="Loading…";
+ fetch(config.SUPABASE_URL+"/functions/v1/"+(config.FUNCTION_NAME||"ppic-fms")+"?tab=spec-approval",{method:"GET",headers:{"apikey":config.SUPABASE_PUBLISHABLE_KEY},cache:"no-store"})
+ .then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();})
+ .then(function(body){
+  var values=Array.isArray(body.values)?body.values:[];
+  var headers=values.length&&Array.isArray(values[0])?values[0]:[];
+  specRows=values.slice(1).filter(function(r){return Array.isArray(r);}).map(function(r){return Array.from({length:13},function(_,i){return r[i]===null||r[i]===undefined?"":String(r[i]);});});
+  $("specTableHead").innerHTML="<tr>"+headers.slice(0,13).map(function(h){return "<th>"+esc(h||"Column")+"</th>";}).join("")+"</tr>";
+  $("specRowCount").textContent="· "+specRows.length+" matching records";
+  $("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
+  renderSpec();
+ })
+ .catch(function(error){$("specTableHead").innerHTML="";$("specTableBody").innerHTML="<tr><td colspan='13' class='empty'>Could not load spec approval records: "+esc(error.message||"Unknown error")+"</td></tr>";$("specTableSummary").textContent="Load failed";})
+ .finally(function(){$("specRefreshBtn").disabled=false;$("specRefreshBtn").textContent="↻ Refresh";});
+}
+
 function init(){loadData();}
-["searchInput","personFilter","stepFilter","statusFilter"].forEach(function(id){$(id).addEventListener("input",render);$(id).addEventListener("change",render);});$("refreshBtn").addEventListener("click",loadData);$("retryBtn").addEventListener("click",loadData);$("clearFilters").addEventListener("click",function(){$("searchInput").value="";$("personFilter").value="";$("stepFilter").value="";$("statusFilter").value="";render();});init();setInterval(function(){if(!$("dashboard").hidden)render();},60000);
+$("navOverview").addEventListener("click",function(){setView("overview");});$("navSpecApproval").addEventListener("click",function(){setView("spec");});$("specRefreshBtn").addEventListener("click",loadSpecData);$("specSearchInput").addEventListener("input",renderSpec);
+["searchInput","personFilter","stepFilter","statusFilter"].forEach(function(id){$(id).addEventListener("input",render);$(id).addEventListener("change",render);});$("refreshBtn").addEventListener("click",loadData);$("retryBtn").addEventListener("click",loadData);$("clearFilters").addEventListener("click",function(){$("searchInput").value="";$("personFilter").value="";$("stepFilter").value="";$("statusFilter").value="";render();});init();setInterval(function(){if(activeView==="overview"&&!$("dashboard").hidden)render();},60000);
 })();
