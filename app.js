@@ -44,8 +44,8 @@ function isPastPlannedDate(planned){var d=parseDate(planned);if(!d)return false;
 function headerKey(value){return String(value===null||value===undefined?"":value).trim().toLowerCase().replace(/[^a-z0-9]/g,"");}
 function val(row,key){if(Object.prototype.hasOwnProperty.call(row,key))return row[key]===null?"":row[key];var target=headerKey(key);var found=Object.keys(row).find(function(k){return headerKey(k)===target;});return found?((row[found]===null||row[found]===undefined)?"":row[found]):"";}
 function isFilled(value){return value!==null&&value!==undefined&&String(value).trim()!==""&&value!==false;}
-function isWorkflowFilled(value){return isFilled(value)&&String(value).trim().toLowerCase()!=="is";}
-function cleanPerson(value){var text=String(value===null||value===undefined?"":value).trim();return text.toLowerCase()==="is"?"":text;}
+function isWorkflowFilled(value){var text=String(value===null||value===undefined?"":value).trim().toLowerCase();return isFilled(value)&&text!=="yes"&&text!=="is";}
+function cleanPerson(value){var text=String(value===null||value===undefined?"":value).trim();return /^(yes|is)$/i.test(text)?"":text;}
 function makeQueue(records) {
   var queue = [];
 
