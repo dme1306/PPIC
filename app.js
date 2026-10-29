@@ -14,11 +14,7 @@ var steps = [
 {name:"Step 10",planned:"COL_BC",status:"COL_BE",person:"Sales Order(New Prd)"},
 {name:"Step 11",planned:"COL_BH",status:"COL_BJ",person:"Sale Order Checked"},
 {name:"Step 12",planned:"COL_BK",status:"COL_BM",person:"Sale Order Update in Prod. File"},
-{name:"Step 13",planned:"COL_BN",status:"COL_BP",person:"Sale Order Confirmation"},
-{name:"Step 14",planned:"COL_BY",status:"COL_BW",person:"F&D(STEP 4a)"},
-{name:"Step 15",planned:"COL_CD",status:"COL_CB",person:"F&D(STEP 5a)"},
-{name:"Step 16",planned:"COL_CH",status:"COL_CF",person:"Lakshmi"},
-{name:"Step 17",planned:"COL_CK",status:"COL_CI",person:"F&D(STEP 9a)"}
+{name:"Step 13",planned:"COL_BN",status:"COL_BP",person:"Sale Order Confirmation"}
 ];
 var $ = function(id){return document.getElementById(id);};
 function columnName(index){var name="";while(index>0){var rem=(index-1)%26;name=String.fromCharCode(65+rem)+name;index=Math.floor((index-1)/26);}return name;}
