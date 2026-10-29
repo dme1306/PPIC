@@ -44,6 +44,8 @@ function isPastPlannedDate(planned){var d=parseDate(planned);if(!d)return false;
 function headerKey(value){return String(value===null||value===undefined?"":value).trim().toLowerCase().replace(/[^a-z0-9]/g,"");}
 function val(row,key){if(Object.prototype.hasOwnProperty.call(row,key))return row[key]===null?"":row[key];var target=headerKey(key);var found=Object.keys(row).find(function(k){return headerKey(k)===target;});return found?((row[found]===null||row[found]===undefined)?"":row[found]):"";}
 function isFilled(value){return value!==null&&value!==undefined&&String(value).trim()!==""&&value!==false;}
+function isWorkflowFilled(value){return isFilled(value)&&String(value).trim().toLowerCase()!=="is";}
+function cleanPerson(value){var text=String(value===null||value===undefined?"":value).trim();return text.toLowerCase()==="is"?"":text;}
 function makeQueue(records) {
   var queue = [];
 
@@ -63,8 +65,8 @@ function makeQueue(records) {
       var step = steps[i];
       var planned = val(row, step.planned);
       var status = val(row, step.status);
-      var hasPlanned = isFilled(planned);
-      var hasStatus = isFilled(status);
+      var hasPlanned = isWorkflowFilled(planned);
+      var hasStatus = isWorkflowFilled(status);
 
       // Both blank: this step is unused; continue to the previous step.
       if (!hasPlanned && !hasStatus) continue;
@@ -93,7 +95,7 @@ function makeQueue(records) {
       product: val(row, "Product Name") || val(row, "ProductName") || val(row, "COL_D"),
       orderStatus: val(row, "Order Status") || val(row, "COL_E"),
       remarks: val(row, "Remarks") || val(row, "COL_BR"),
-      person: val(row, "Person Name") || val(row, "COL_BU") || pending.step.person,
+      person: cleanPerson(val(row, "Person Name")) || cleanPerson(val(row, "COL_BU")) || pending.step.person,
       planned: pending.planned,
       step: pending.step.name,
       delayHours: delay === null ? 0 : delay,
