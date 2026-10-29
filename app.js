@@ -1,6 +1,6 @@
 (function () {
 "use strict";
-var config = window.FMS_CONFIG || {}, allRows = [], rawRecords = [], specRows = [], activeView = "overview";
+var config = window.FMS_CONFIG || {}, allRows = [], rawRecords = [], specRows = [], pendingStatusRows = [], pendingStatusHeaders = [], activeView = "overview";
 var steps = [
 {name:"Step 1",planned:"COL_S",status:"COL_U",person:"Acc. Master"},
 {name:"Step 2",planned:"COL_W",status:"COL_Y",person:"Payment Status"},
@@ -113,12 +113,15 @@ function setView(view){
  activeView=view;
  $("dashboard").hidden=view!=="overview";
  $("specApprovalPanel").hidden=view!=="spec";
+ $("pendingStatusPanel").hidden=view!=="pending";
  $("errorPanel").hidden=true;
  $("navOverview").classList.toggle("active",view==="overview");
  $("navSpecApproval").classList.toggle("active",view==="spec");
+ $("navPendingStatus").classList.toggle("active",view==="pending");
  $("refreshBtn").hidden=view!=="overview";
  $("lastUpdated").hidden=view==="spec";
  if(view==="spec"&&!specRows.length)loadSpecData();
+ if(view==="pending"&&!pendingStatusRows.length)loadPendingStatus();
 }
 function renderSpec(){
  var query=$("specSearchInput").value.trim().toLowerCase();
@@ -144,7 +147,26 @@ function loadSpecData(){
  .finally(function(){$("specRefreshBtn").disabled=false;$("specRefreshBtn").textContent="↻ Refresh";});
 }
 
+
+function renderPendingStatus(){
+ var query=$("pendingStatusSearch").value.trim().toLowerCase(),status=$("pendingStatusFilter").value;
+ var rows=pendingStatusRows.filter(function(r){var hay=r.join(" ").toLowerCase();return(!query||hay.indexOf(query)!==-1)&&(!status||String(r[18]||"")===status);});
+ $("pendingStatusVisibleCount").textContent=rows.length+" records";$("pendingStatusSummary").textContent="Showing "+rows.length+" of "+pendingStatusRows.length+" source records";
+ $("pendingStatusTableBody").innerHTML=rows.length?rows.map(function(r){return "<tr>"+pendingStatusHeaders.map(function(_,i){var v=r[i]===undefined?"":r[i];var cls=i===18?"status-cell":(i===19?"pending-days":"");return "<td class='"+cls+"'>"+esc(v===""?"—":v)+"</td>";}).join("")+"</tr>";}).join(""):"<tr><td colspan='"+Math.max(1,pendingStatusHeaders.length)+"' class='empty'>No pending records match these filters.</td></tr>";
+}
+function loadPendingStatus(){
+ $("pendingStatusRefreshBtn").disabled=true;$("pendingStatusRefreshBtn").textContent="Loading…";
+ fetch(config.SUPABASE_URL+"/functions/v1/"+(config.FUNCTION_NAME||"ppic-fms")+"?tab=pending-status",{method:"GET",headers:{"apikey":config.SUPABASE_PUBLISHABLE_KEY},cache:"no-store"})
+ .then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();})
+ .then(function(body){var values=Array.isArray(body.values)?body.values:[];pendingStatusHeaders=values.length&&Array.isArray(values[0])?values[0].map(function(h){return String(h||"");}):[];pendingStatusRows=values.slice(1).filter(function(r){return Array.isArray(r);}).map(function(r){return Array.from({length:pendingStatusHeaders.length},function(_,i){return r[i]===null||r[i]===undefined?"":String(r[i]);});});
+  var statuses=Array.from(new Set(pendingStatusRows.map(function(r){return String(r[18]||"");}).filter(Boolean))).sort();$("pendingStatusFilter").innerHTML="<option value=''>All pending statuses</option>"+statuses.map(function(s){return "<option value='"+esc(s)+"'>"+esc(s)+"</option>";}).join("");$("pendingStatusTableHead").innerHTML="<tr>"+pendingStatusHeaders.map(function(h){return "<th>"+esc(h||"Column")+"</th>";}).join("")+"</tr>";
+  var days=pendingStatusRows.map(function(r){var n=Number(r[19]);return Number.isFinite(n)&&String(r[19]).trim()!==""?n:null;}).filter(function(n){return n!==null;});$("psTotal").textContent=pendingStatusRows.length.toLocaleString("en-IN");$("psStages").textContent=statuses.length.toLocaleString("en-IN");$("psOver7").textContent=days.filter(function(n){return n>7;}).length.toLocaleString("en-IN");$("psLongest").textContent=days.length?Math.max.apply(null,days)+" days":"—";$("pendingStatusRowCount").textContent="· "+pendingStatusRows.length+" source records";$("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});renderPendingStatus();
+ })
+ .catch(function(error){$("pendingStatusTableHead").innerHTML="";$("pendingStatusTableBody").innerHTML="<tr><td class='empty'>Could not load Pending Status: "+esc(error.message||"Unknown error")+". Confirm the Google Sheet is shared with the dashboard service account.</td></tr>";$("pendingStatusSummary").textContent="Load failed";})
+ .finally(function(){$("pendingStatusRefreshBtn").disabled=false;$("pendingStatusRefreshBtn").textContent="↻ Refresh";});
+}
+
 function init(){loadData();}
-$("navOverview").addEventListener("click",function(){setView("overview");});$("navSpecApproval").addEventListener("click",function(){setView("spec");});$("specRefreshBtn").addEventListener("click",loadSpecData);$("specSearchInput").addEventListener("input",renderSpec);
+$("navOverview").addEventListener("click",function(){setView("overview");});$("navSpecApproval").addEventListener("click",function(){setView("spec");});$("navPendingStatus").addEventListener("click",function(){setView("pending");});$("pendingStatusRefreshBtn").addEventListener("click",loadPendingStatus);$("pendingStatusSearch").addEventListener("input",renderPendingStatus);$("pendingStatusFilter").addEventListener("change",renderPendingStatus);$("specRefreshBtn").addEventListener("click",loadSpecData);$("specSearchInput").addEventListener("input",renderSpec);
 ["searchInput","personFilter","stepFilter","statusFilter"].forEach(function(id){$(id).addEventListener("input",render);$(id).addEventListener("change",render);});$("refreshBtn").addEventListener("click",loadData);$("retryBtn").addEventListener("click",loadData);$("clearFilters").addEventListener("click",function(){$("searchInput").value="";$("personFilter").value="";$("stepFilter").value="";$("statusFilter").value="";render();});init();setInterval(function(){if(activeView==="overview"&&!$("dashboard").hidden)render();},60000);
 })();
