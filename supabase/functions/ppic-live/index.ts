@@ -62,6 +62,18 @@ async function googleAccessToken(serviceAccount: { client_email: string; private
 type Source = { name: string; id: string; profile: string; skipDrug: boolean };
 type Tracker = { name: string; id: string };
 
+// These links reproduce the Customer Sales Date IMPORTRANGE/VLOOKUP formulas
+// in each source WEB Escalation tab. The core-company tabs share the Crius tracker.
+const SALES_TRACKER_BY_SOURCE: Record<string, string> = {
+  Crius: "Crius",
+  Medella: "Crius",
+  Samson: "Crius",
+  Anuttama: "Crius",
+  "Chiros/Sig": "Chiros/Sig",
+  Orbit: "Orbit",
+  Chimak: "Chimak"
+};
+
 function readJsonArraySetting<T>(name: string): T[] {
   try {
     const value = JSON.parse(Deno.env.get(name) || "[]");
@@ -260,12 +272,12 @@ async function readValues(token: string, spreadsheetId: string, range: string) {
   return Array.isArray(body.values) ? body.values as unknown[][] : [];
 }
 
-function trackerMap(values: unknown[][]) {
-  const output = new Map<string, { salesDate: unknown; productionFlag: unknown }>();
+function trackerValueMap(values: unknown[][], valueIndex: number) {
+  const output = new Map<string, unknown>();
   for (const row of values.slice(1)) {
     const ref = clean(row[0]);
     if (!ref || output.has(ref)) continue;
-    output.set(ref, { salesDate: row[5] ?? "", productionFlag: row[19] ?? "" });
+    output.set(ref, row[valueIndex] ?? "");
   }
   return output;
 }
@@ -374,12 +386,15 @@ async function buildDashboard(token: string) {
   }));
 
   const trackerResults = await Promise.all(TRACKERS.map(async (tracker) => {
-    try {
-      const values = await readValues(token, tracker.id, "'Dashboard With Sales Order'!A:T");
-      return { tracker, values, error: "" };
-    } catch {
-      return { tracker, values: [] as unknown[][], error: "Could not read the customer tracking sheet." };
-    }
+    const [sales, production] = await Promise.all([
+      readValues(token, tracker.id, "'Dashboard'!A:F")
+        .then((values) => ({ values, error: "" }))
+        .catch(() => ({ values: [] as unknown[][], error: "Sales-date tab could not be read." })),
+      readValues(token, tracker.id, "'Dashboard With Sales Order'!A:T")
+        .then((values) => ({ values, error: "" }))
+        .catch(() => ({ values: [] as unknown[][], error: "Production-file tab could not be read." }))
+    ]);
+    return { tracker, sales, production };
   }));
 
   let ppicRemarks: unknown[][] = [];
@@ -398,9 +413,15 @@ async function buildDashboard(token: string) {
     contactError = "Concern person email details are unavailable.";
   }
 
-  const trackersByBrand = new Map<string, Map<string, { salesDate: unknown; productionFlag: unknown }>>();
+  const trackersByBrand = new Map<string, {
+    salesDates: Map<string, unknown>;
+    productionFlags: Map<string, unknown>;
+  }>();
   for (const result of trackerResults) {
-    if (!result.error) trackersByBrand.set(result.tracker.name, trackerMap(result.values));
+    trackersByBrand.set(result.tracker.name, {
+      salesDates: trackerValueMap(result.sales.values, 5),
+      productionFlags: trackerValueMap(result.production.values, 19)
+    });
   }
   const remarkLookup = remarksMap(ppicRemarks);
   const contactsByRef = contactMap(contactValues);
@@ -431,14 +452,28 @@ async function buildDashboard(token: string) {
     const timestampIndex = findHeader(headers, ["Timestamp"]);
     const productIndex = findHeader(headers, ["ProductName", "Product Name"]);
     const profile = stagesFor(result.source.profile);
-    const trackers = trackersByBrand.get(result.source.name);
     for (let rowIndex = 1; rowIndex < result.values.length; rowIndex++) {
       const row = result.values[rowIndex];
       const ref = clean(cellValue(row, refIndex));
       if (!ref || !isFilled(cellValue(row, timestampIndex))) continue;
       if (result.source.skipDrug && clean(cellValue(row, categoryIndex)).toLowerCase() === "drug") continue;
 
-      const tracker = trackers?.get(ref);
+      const salesTrackerName = SALES_TRACKER_BY_SOURCE[result.source.name] || result.source.name;
+      const salesTracker = trackersByBrand.get(salesTrackerName);
+      // productionindex in the workbook unions the same six tracker files.
+      // Search in that order so the direct view matches its Ref No. lookup.
+      let productionFlag: unknown = "";
+      for (const trackerResult of trackerResults) {
+        const value = trackersByBrand.get(trackerResult.tracker.name)?.productionFlags.get(ref);
+        if (isFilled(value)) {
+          productionFlag = value;
+          break;
+        }
+      }
+      const tracker = {
+        salesDate: salesTracker?.salesDates.get(ref) ?? "",
+        productionFlag
+      };
       const timestamp = cellValue(row, timestampIndex);
       const product = cellValue(row, productIndex);
       const ppicRemark = ppNotesFor(remarkLookup, timestamp, ref, product);
@@ -479,7 +514,10 @@ async function buildDashboard(token: string) {
       warnings.push(source.name + " has " + source.formulaErrors + " formula error cells in workflow fields.");
     }
   }
-  for (const result of trackerResults) if (result.error) warnings.push(result.tracker.name + " production/customer details are unavailable.");
+  for (const result of trackerResults) {
+    if (result.sales.error) warnings.push(result.tracker.name + " customer sales dates are unavailable.");
+    if (result.production.error) warnings.push(result.tracker.name + " production-file status is unavailable.");
+  }
   if (remarksError) warnings.push(remarksError);
   if (contactError) warnings.push(contactError);
 
@@ -487,8 +525,13 @@ async function buildDashboard(token: string) {
     tasks,
     specTasks,
     sources: sourceStatus,
-    trackerSources: trackerResults.map((result) => ({ name: result.tracker.name, ok: !result.error })),
-    dataComplete: sourceStatus.every((source) => source.ok),
+    trackerSources: trackerResults.map((result) => ({
+      name: result.tracker.name,
+      salesDatesOk: !result.sales.error,
+      productionFlagsOk: !result.production.error,
+      ok: !result.sales.error && !result.production.error
+    })),
+    dataComplete: sourceStatus.every((source) => source.ok) && trackerResults.every((result) => !result.sales.error && !result.production.error),
     warnings,
     updatedAt: new Date().toISOString()
   };
@@ -516,3 +559,4 @@ Deno.serve(async (request: Request) => {
     return reply({ error: "Could not load the live source sheets. Check backend access and try again." }, 502);
   }
 });
+
