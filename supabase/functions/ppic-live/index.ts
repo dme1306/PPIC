@@ -62,6 +62,26 @@ async function googleAccessToken(serviceAccount: { client_email: string; private
 type Source = { name: string; id: string; profile: string; skipDrug: boolean };
 type Tracker = { name: string; id: string };
 
+const DEFAULT_SOURCES: Source[] = [
+  { name: "Crius", id: "1YSO4mq_bNNJo_g9-k_FWvVbRM6OPXZQ678ec0at25RA", profile: "core", skipDrug: true },
+  { name: "Medella", id: "1dZSaCwYLr5VtVb9aK55dM4qUpr54-B3msr2eB-WbWJg", profile: "core", skipDrug: false },
+  { name: "Samson", id: "1jjtrhmGumw4j8pMQSqROuo8NT2traE0wAf6hv_Mz0cI", profile: "core", skipDrug: false },
+  { name: "Anuttama", id: "1KeFU5u9oXWZO3AUoooqWcFTEYEqe9BCk84liiOmS2ME", profile: "core", skipDrug: false },
+  { name: "Orbit", id: "1GtTN5MhYnBMltZVFcvXVlkWNyH_wRJi7DaAQCIJmrCw", profile: "regional", skipDrug: false },
+  { name: "Chiros/Sig", id: "1ag6R_UZYbuJUAvw66vU36nNH9Z9WbMJNOnRAO9E9Q7w", profile: "regional", skipDrug: false },
+  { name: "Chimak", id: "1kQ8F231AKTkVE7impXCxi9qmuNucYw1upInldZmBzAQ", profile: "chimak", skipDrug: false }
+];
+
+const DEFAULT_TRACKERS: Tracker[] = [
+  { name: "Crius", id: "1h224pUx7o-FbBp4dgQoCYwOXiOKY9ffTwyDIjjqCft4" },
+  { name: "Samson", id: "1mnxBY3dSYarA-bpE_OFcrgFfQjMa5UbDC9dc-DSG69I" },
+  { name: "Chiros/Sig", id: "1nHVB5S9A9FnOky4Roqz_c0m65D7WBvhAXt8I4ricHfo" },
+  { name: "Anuttama", id: "10kh4yWhSXjcxs5WUKVNvsT_t-K9232g2aNjL6KZmmqY" },
+  { name: "Chimak", id: "1qLKL3S3hW2WEfIGJijMNPrp2VWeGz8fyb8GLMN4FMaM" },
+  { name: "Orbit", id: "1djJ2eSDvZq1i5ZwlMhnzpUjhg2VRCrPw5miY8a17cWQ" }
+];
+const DEFAULT_PPIC_REMARKS_SPREADSHEET_ID = "1_6i3_XZzfUrSy-byL9u3ZzdDhXKW8YW_lK9SoXnZtqg";
+
 // These links reproduce the Customer Sales Date IMPORTRANGE/VLOOKUP formulas
 // in each source WEB Escalation tab. The core-company tabs share the Crius tracker.
 const SALES_TRACKER_BY_SOURCE: Record<string, string> = {
@@ -74,18 +94,20 @@ const SALES_TRACKER_BY_SOURCE: Record<string, string> = {
   Chimak: "Chimak"
 };
 
-function readJsonArraySetting<T>(name: string): T[] {
+function readJsonArraySetting<T>(name: string, fallback: T[]): T[] {
   try {
-    const value = JSON.parse(Deno.env.get(name) || "[]");
-    return Array.isArray(value) ? value as T[] : [];
+    const raw = Deno.env.get(name);
+    if (!raw) return fallback;
+    const value = JSON.parse(raw);
+    return Array.isArray(value) && value.length ? value as T[] : fallback;
   } catch {
-    return [];
+    return fallback;
   }
 }
 
-const SOURCES = readJsonArraySetting<Source>("PPIC_SOURCES_JSON");
-const TRACKERS = readJsonArraySetting<Tracker>("PPIC_TRACKERS_JSON");
-const PPIC_REMARKS_SPREADSHEET_ID = Deno.env.get("PPIC_REMARKS_SPREADSHEET_ID") || "";
+const SOURCES = readJsonArraySetting<Source>("PPIC_SOURCES_JSON", DEFAULT_SOURCES);
+const TRACKERS = readJsonArraySetting<Tracker>("PPIC_TRACKERS_JSON", DEFAULT_TRACKERS);
+const PPIC_REMARKS_SPREADSHEET_ID = Deno.env.get("PPIC_REMARKS_SPREADSHEET_ID") || DEFAULT_PPIC_REMARKS_SPREADSHEET_ID;
 
 type Stage = {
   id: string;
@@ -268,7 +290,10 @@ async function readValues(token: string, spreadsheetId: string, range: string) {
     "?valueRenderOption=FORMATTED_VALUE";
   const response = await fetch(url, { headers: { authorization: "Bearer " + token } });
   const body = await response.json();
-  if (!response.ok) throw new Error("Google Sheets access failed");
+  if (!response.ok) {
+    const detail = typeof body?.error?.message === "string" ? body.error.message : "";
+    throw new Error("Google Sheets access failed (" + response.status + ")" + (detail ? ": " + detail : "."));
+  }
   return Array.isArray(body.values) ? body.values as unknown[][] : [];
 }
 
@@ -380,8 +405,9 @@ async function buildDashboard(token: string) {
     try {
       const values = await readValues(token, source.id, "Data!A1:DF");
       return { source, values, error: "" };
-    } catch {
-      return { source, values: [] as unknown[][], error: "Could not read this source sheet." };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not read this source sheet.";
+      return { source, values: [] as unknown[][], error: message };
     }
   }));
 
@@ -389,10 +415,10 @@ async function buildDashboard(token: string) {
     const [sales, production] = await Promise.all([
       readValues(token, tracker.id, "'Dashboard'!A:F")
         .then((values) => ({ values, error: "" }))
-        .catch(() => ({ values: [] as unknown[][], error: "Sales-date tab could not be read." })),
+        .catch((error) => ({ values: [] as unknown[][], error: error instanceof Error ? error.message : "Sales-date tab could not be read." })),
       readValues(token, tracker.id, "'Dashboard With Sales Order'!A:T")
         .then((values) => ({ values, error: "" }))
-        .catch(() => ({ values: [] as unknown[][], error: "Production-file tab could not be read." }))
+        .catch((error) => ({ values: [] as unknown[][], error: error instanceof Error ? error.message : "Production-file tab could not be read." }))
     ]);
     return { tracker, sales, production };
   }));
@@ -401,16 +427,16 @@ async function buildDashboard(token: string) {
   let remarksError = "";
   try {
     ppicRemarks = await readValues(token, PPIC_REMARKS_SPREADSHEET_ID, "'PPIC Remarks'!B:O");
-  } catch {
-    remarksError = "PPIC remarks could not be read.";
+  } catch (error) {
+    remarksError = error instanceof Error ? error.message : "PPIC remarks could not be read.";
   }
 
   let contactValues: unknown[][] = [];
   let contactError = "";
   try {
     contactValues = await readValues(token, PPIC_REMARKS_SPREADSHEET_ID, "sMaster!A:B");
-  } catch {
-    contactError = "Concern person email details are unavailable.";
+  } catch (error) {
+    contactError = error instanceof Error ? error.message : "Concern person email details are unavailable.";
   }
 
   const trackersByBrand = new Map<string, {
@@ -508,7 +534,7 @@ async function buildDashboard(token: string) {
   sortRows(specTasks);
 
   const warnings: string[] = [];
-  for (const source of sourceStatus) if (!source.ok) warnings.push(source.name + " source data is unavailable.");
+  for (const result of sourceResults) if (result.error) warnings.push(result.source.name + " source data is unavailable: " + result.error);
   for (const source of sourceStatus) {
     if (source.ok && source.formulaErrors > 0) {
       warnings.push(source.name + " has " + source.formulaErrors + " formula error cells in workflow fields.");
