@@ -50,6 +50,8 @@ button, input, select { font: inherit; }
 .sidebar-source strong, .sidebar-source span:last-child { display: block; }
 .sidebar-source strong { color: #e0e8f7; font-size: 11px; font-weight: 650; }
 .source-dot, .status-dot { width: 8px; height: 8px; background: #25b881; border-radius: 50%; display: inline-block; flex: 0 0 auto; margin-top: 5px; }
+.status-dot.connecting, .status-dot.partial { background: var(--amber); }
+.status-dot.offline { background: var(--red); }
 .sidebar-footer { font-size: 10px; color: #667795; margin-top: 18px; padding: 0 3px; }
 .main { min-width: 0; padding: 30px 32px 40px; }
 .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 24px; }
