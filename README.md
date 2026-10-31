@@ -23,14 +23,17 @@ The workbook's current “Spec approval pending” tab filters Q = Yes, while Ra
 
 The combined workbook's Raw formula omits Chimak. The direct dashboard includes Chimak from its source sheet.
 
-## Sign-in and secrets
+## Opening the dashboard
 
-The static site is public code, but the dashboard data endpoint requires a valid Supabase session and an email listed in the server-side ALLOWED_EMAILS secret.
+The dashboard loads as soon as the page opens and refreshes every five minutes. The local project folder needs the public `config.js` file, which is included in the repository. The deployed address is `https://dme1306.github.io/PPIC/`.
+
+## Public access and secrets
+
+The dashboard and live data endpoint are public with no sign-in. Anyone with the website link can view and retrieve the live order data. The Google Sheets source IDs and service-account key stay in Supabase secrets, while the function's Google Sheets scope is read-only.
 
 Configure these secrets in the Supabase project:
 
 - GOOGLE_SERVICE_ACCOUNT_JSON: service account JSON key. Keep it in Supabase secrets only.
-- ALLOWED_EMAILS: comma-separated Google account emails allowed to use the dashboard.
 - PPIC_SOURCES_JSON: JSON array of the seven source sheet IDs and their workflow profiles.
 - PPIC_TRACKERS_JSON: JSON array of the six customer tracking sheet IDs.
 - PPIC_REMARKS_SPREADSHEET_ID: ID of the workbook containing the PPIC Remarks tab.
@@ -43,24 +46,12 @@ The service account needs Viewer access to:
 - The six Customer PO Tracking Master spreadsheets.
 - The PPIC Escalation Dashboard spreadsheet, for its PPIC Remarks tab.
 
-Enable Google Sheets API for the service account's Google Cloud project. The Edge Function uses the read-only Sheets scope. Never put service-account JSON, private keys, or service-role keys in this repository or config.js.
-
-## Google sign-in
-
-Enable Google OAuth in Supabase Authentication and configure the OAuth callback:
-
-https://wgrlwgaymepehcpmizdl.supabase.co/auth/v1/callback
-
-Set the Supabase site URL and allowed redirect URL to:
-
-https://dme1306.github.io/PPIC/
-
-Set ALLOWED_EMAILS to the approved users. The Edge Function checks both the Supabase session and that allowlist.
+Enable Google Sheets API for the service account's Google Cloud project. Never put service-account JSON, private keys, or service-role keys in this repository or config.js. Since the endpoint is public, anyone can request its returned rows even if they do not use the dashboard page.
 
 ## Deploy
 
 - GitHub Pages publishes index.html, app.js, styles.css, and config.js from the main branch through .github/workflows/pages.yml.
-- Deploy supabase/functions/ppic-fms/index.ts to project wgrlwgaymepehcpmizdl with JWT verification enabled. supabase/config.toml records that setting for CLI deployment.
+- Deploy supabase/functions/ppic-fms/index.ts to project wgrlwgaymepehcpmizdl with JWT verification disabled. supabase/config.toml records that setting for CLI deployment.
 - Set the Supabase secrets before deploying the function.
 - A push to main publishes the site; review the feature branch before merging.
 
