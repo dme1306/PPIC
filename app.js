@@ -159,6 +159,13 @@
       "</ul><span>Displayed records may be incomplete.</span>";
   }
 
+  function setConnectionState(state, label) {
+    var dot = $("sourceStatusDot");
+    dot.classList.remove("connecting", "partial", "offline");
+    if (state !== "online") dot.classList.add(state);
+    $("connectionLabel").textContent = label;
+  }
+
   function renderTable() {
     var rows = filteredRows();
     $("visibleCount").textContent = rows.length.toLocaleString("en-IN") + " tasks";
@@ -224,11 +231,14 @@
     $("dashboard").hidden = false;
     $("errorPanel").hidden = false;
     $("errorText").textContent = message || "Unknown connection error.";
+    $("sourceSummary").textContent = "";
+    setConnectionState("offline", "Source data unavailable");
   }
 
   async function loadDashboard() {
     if (isLoading) return;
     isLoading = true;
+    setConnectionState("connecting", "Connecting to source sheets…");
     $("refreshBtn").disabled = true;
     $("refreshBtn").textContent = "Loading…";
     try {
@@ -253,6 +263,8 @@
       renderFilters();
       updateSourceSummary();
       render();
+      var hasWarnings = dashboardData.warnings.length > 0 || dashboardData.sources.some(function (source) { return !source.ok; });
+      setConnectionState(hasWarnings ? "partial" : "online", hasWarnings ? "Connected with source issues" : "Live source data connected");
       $("lastUpdated").textContent = "Updated " + new Date().toLocaleTimeString("en-IN", {
         timeZone: "Asia/Kolkata",
         hour: "2-digit",
