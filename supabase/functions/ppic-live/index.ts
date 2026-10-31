@@ -270,6 +270,27 @@ function trackerMap(values: unknown[][]) {
   return output;
 }
 
+function contactMap(values: unknown[][]) {
+  const output = new Map<string, string>();
+  for (const row of values) {
+    const ref = clean(row[0]);
+    const email = clean(row[1]);
+    if (ref && email && !output.has(ref)) output.set(ref, email);
+  }
+  return output;
+}
+
+function locationFor(source: Source, ref: string) {
+  if (ref.startsWith("CR")) return "Crius";
+  if (ref.startsWith("CSM")) return "Chimak";
+  if (ref.startsWith("CH")) return "Chiros";
+  if (ref.startsWith("AT")) return "Anuttama";
+  if (ref.startsWith("SN")) return "Samson";
+  if (ref.startsWith("OR")) return "Orbit";
+  if (ref.startsWith("ML")) return "Medella";
+  return source.name;
+}
+
 function remarksMap(values: unknown[][]) {
   const output = new Map<string, unknown>();
   for (const row of values.slice(1)) {
@@ -300,6 +321,7 @@ function makeTask(
   headers: unknown[],
   sourceRow: number,
   tracker: { salesDate?: unknown; productionFlag?: unknown } | undefined,
+  contactEmail: string,
   ppicRemark: unknown,
   now: Date
 ) {
@@ -316,6 +338,7 @@ function makeTask(
   const calculatedOrderAge = orderAgeDays(timestamp, now);
   return {
     source: source.name,
+    location: locationFor(source, ref),
     sourceRow,
     sourceUrl: "https://docs.google.com/spreadsheets/d/" + source.id + "/edit#range=Data!A" + sourceRow,
     ref,
@@ -325,6 +348,7 @@ function makeTask(
     orderStatus: cellValue(row, orderStatusIndex),
     status: cellValue(row, sourceStatusIndex),
     remarks: cellValue(row, remarksIndex),
+    concernEmail: contactEmail,
     ppicRemark,
     stepId: stage.id,
     step: stage.name + " · Step " + stage.step,
@@ -366,11 +390,20 @@ async function buildDashboard(token: string) {
     remarksError = "PPIC remarks could not be read.";
   }
 
+  let contactValues: unknown[][] = [];
+  let contactError = "";
+  try {
+    contactValues = await readValues(token, PPIC_REMARKS_SPREADSHEET_ID, "sMaster!A:B");
+  } catch {
+    contactError = "Concern person email details are unavailable.";
+  }
+
   const trackersByBrand = new Map<string, Map<string, { salesDate: unknown; productionFlag: unknown }>>();
   for (const result of trackerResults) {
     if (!result.error) trackersByBrand.set(result.tracker.name, trackerMap(result.values));
   }
   const remarkLookup = remarksMap(ppicRemarks);
+  const contactsByRef = contactMap(contactValues);
   const now = new Date();
   const tasks: ReturnType<typeof makeTask>[] = [];
   const specTasks: ReturnType<typeof makeTask>[] = [];
@@ -394,8 +427,6 @@ async function buildDashboard(token: string) {
     if (result.error || result.values.length < 2) continue;
     const headers = result.values[0] || [];
     const refIndex = findHeader(headers, ["Ref No.", "Ref No", "Reference No"]);
-    const statusIndex = findHeader(headers, ["Status"]);
-    const orderStatusIndex = findHeader(headers, ["Order Status"]);
     const categoryIndex = findHeader(headers, ["Category"]);
     const timestampIndex = findHeader(headers, ["Timestamp"]);
     const productIndex = findHeader(headers, ["ProductName", "Product Name"]);
@@ -404,10 +435,7 @@ async function buildDashboard(token: string) {
     for (let rowIndex = 1; rowIndex < result.values.length; rowIndex++) {
       const row = result.values[rowIndex];
       const ref = clean(cellValue(row, refIndex));
-      if (!ref) continue;
-      const status = clean(cellValue(row, statusIndex)).toLowerCase();
-      const orderStatus = clean(cellValue(row, orderStatusIndex)).toLowerCase();
-      if (status === "cancel" || status === "cancelled" || orderStatus === "cancel" || orderStatus === "cancelled") continue;
+      if (!ref || !isFilled(cellValue(row, timestampIndex))) continue;
       if (result.source.skipDrug && clean(cellValue(row, categoryIndex)).toLowerCase() === "drug") continue;
 
       const tracker = trackers?.get(ref);
@@ -418,7 +446,7 @@ async function buildDashboard(token: string) {
 
       const qaStage = profile.find((stage) => stage.id === "s6");
       if (qaStage && pending(qaStage, row)) {
-        specTasks.push(makeTask(result.source, qaStage, row, headers, rowNumber, tracker, ppicRemark, now));
+        specTasks.push(makeTask(result.source, qaStage, row, headers, rowNumber, tracker, contactsByRef.get(ref) || "", ppicRemark, now));
       }
 
       const pendingStages = profile.filter((stage) => pending(stage, row));
@@ -431,7 +459,7 @@ async function buildDashboard(token: string) {
         const taskKey = [result.source.name, rowNumber, selected.id].join("|");
         if (!taskKeys.has(taskKey)) {
           taskKeys.add(taskKey);
-          tasks.push(makeTask(result.source, selected, row, headers, rowNumber, tracker, ppicRemark, now));
+          tasks.push(makeTask(result.source, selected, row, headers, rowNumber, tracker, contactsByRef.get(ref) || "", ppicRemark, now));
         }
       }
     }
@@ -453,6 +481,7 @@ async function buildDashboard(token: string) {
   }
   for (const result of trackerResults) if (result.error) warnings.push(result.tracker.name + " production/customer details are unavailable.");
   if (remarksError) warnings.push(remarksError);
+  if (contactError) warnings.push(contactError);
 
   return {
     tasks,
@@ -487,4 +516,3 @@ Deno.serve(async (request: Request) => {
     return reply({ error: "Could not load the live source sheets. Check backend access and try again." }, 502);
   }
 });
-
