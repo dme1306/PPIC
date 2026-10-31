@@ -1,23 +1,10 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
 (function () {
   "use strict";
 
   var config = window.FMS_CONFIG || {};
-  var apiClient = createClient(config.SUPABASE_URL || "", config.SUPABASE_PUBLISHABLE_KEY || "", {
-    auth: {
-      flowType: "pkce",
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
-    }
-  });
-
-  var session = null;
   var dashboardData = { tasks: [], specTasks: [], sources: [], warnings: [] };
   var activeView = "all";
   var isLoading = false;
-  var latestToken = "";
   var $ = function (id) { return document.getElementById(id); };
 
   function esc(value) {
@@ -232,56 +219,25 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
       sources.reduce(function (sum, source) { return sum + (Number(source.rows) || 0); }, 0).toLocaleString("en-IN") + " source rows";
   }
 
-  function showSignedIn() {
-    $("loginPanel").hidden = true;
-    $("dashboard").hidden = false;
-    $("errorPanel").hidden = true;
-    $("refreshBtn").hidden = false;
-    $("signOutBtn").hidden = false;
-    $("userEmail").hidden = false;
-    $("userEmail").textContent = session && session.user ? session.user.email || "Signed in" : "Signed in";
-  }
-
-  function showSignedOut() {
-    $("loginPanel").hidden = false;
-    $("dashboard").hidden = true;
-    $("errorPanel").hidden = true;
-    $("refreshBtn").hidden = true;
-    $("signOutBtn").hidden = true;
-    $("userEmail").hidden = true;
-    $("userEmail").textContent = "";
-    $("lastUpdated").textContent = "Not connected";
-  }
-
   function showError(message) {
-    $("dashboard").hidden = true;
+    $("dashboard").hidden = false;
     $("errorPanel").hidden = false;
     $("errorText").textContent = message || "Unknown connection error.";
   }
 
-  async function loadDashboard(force) {
-    if (!session || isLoading) return;
-    if (!force && latestToken === session.access_token && dashboardData.tasks.length) return;
+  async function loadDashboard() {
+    if (isLoading) return;
     isLoading = true;
-    latestToken = session.access_token;
     $("refreshBtn").disabled = true;
     $("refreshBtn").textContent = "Loading…";
     try {
       var response = await fetch(config.SUPABASE_URL + "/functions/v1/" + (config.FUNCTION_NAME || "ppic-fms"), {
         method: "GET",
-        headers: {
-          apikey: config.SUPABASE_PUBLISHABLE_KEY,
-          authorization: "Bearer " + session.access_token
-        },
+        headers: { apikey: config.SUPABASE_PUBLISHABLE_KEY },
         cache: "no-store"
       });
       var body = await response.json().catch(function () { return {}; });
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          $("authMessage").textContent = body.error || "This Google account cannot open the dashboard.";
-          await apiClient.auth.signOut();
-          throw new Error(body.error || "Your account is not authorized.");
-        }
         throw new Error(body.error || ("Request failed (" + response.status + ")."));
       }
 
@@ -291,7 +247,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
         sources: Array.isArray(body.sources) ? body.sources : [],
         warnings: Array.isArray(body.warnings) ? body.warnings : []
       };
-      showSignedIn();
+      $("dashboard").hidden = false;
+      $("errorPanel").hidden = true;
       renderFilters();
       updateSourceSummary();
       render();
@@ -301,7 +258,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
         minute: "2-digit"
       });
     } catch (error) {
-      if (session) showError(error && error.message ? error.message : "Could not load live source data.");
+      showError(error && error.message ? error.message : "Could not load live source data.");
     } finally {
       isLoading = false;
       $("refreshBtn").disabled = false;
@@ -317,28 +274,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
     renderTable();
   }
 
-  async function signIn() {
-    $("authMessage").textContent = "";
-    var result = await apiClient.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin + window.location.pathname }
-    });
-    if (result.error) $("authMessage").textContent = result.error.message;
-  }
-
-  async function signOut() {
-    await apiClient.auth.signOut();
-    session = null;
-    dashboardData = { tasks: [], specTasks: [], sources: [], warnings: [] };
-    latestToken = "";
-    showSignedOut();
-  }
-
   function bindEvents() {
-    $("signInBtn").addEventListener("click", signIn);
-    $("signOutBtn").addEventListener("click", signOut);
-    $("refreshBtn").addEventListener("click", function () { loadDashboard(true); });
-    $("retryBtn").addEventListener("click", function () { loadDashboard(true); });
+    $("refreshBtn").addEventListener("click", loadDashboard);
+    $("retryBtn").addEventListener("click", loadDashboard);
     $("navAll").addEventListener("click", function () { setView("all"); });
     $("navSpec").addEventListener("click", function () { setView("spec"); });
     $("navAging").addEventListener("click", function () { setView("aging"); });
@@ -354,29 +292,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
     });
   }
 
-  async function init() {
+  function init() {
     bindEvents();
-    apiClient.auth.onAuthStateChange(function (_event, nextSession) {
-      session = nextSession;
-      if (session) {
-        showSignedIn();
-        window.setTimeout(function () { loadDashboard(false); }, 0);
-      } else {
-        showSignedOut();
-      }
-    });
-
-    var result = await apiClient.auth.getSession();
-    session = result.data && result.data.session ? result.data.session : null;
-    if (session) {
-      showSignedIn();
-      await loadDashboard(false);
-    } else {
-      showSignedOut();
-    }
-
+    loadDashboard();
     window.setInterval(function () {
-      if (session && document.visibilityState === "visible") loadDashboard(true);
+      if (document.visibilityState === "visible") loadDashboard();
     }, 300000);
   }
 
