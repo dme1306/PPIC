@@ -51,7 +51,7 @@ Enable Google Sheets API for the service account's Google Cloud project. Never p
 ## Deploy
 
 - GitHub Pages publishes index.html, app.js, styles.css, and config.js from the main branch through .github/workflows/pages.yml.
-- Deploy supabase/functions/ppic-fms/index.ts to project wgrlwgaymepehcpmizdl with JWT verification disabled. supabase/config.toml records that setting for CLI deployment.
+- Deploy supabase/functions/ppic-live/index.ts to project wgrlwgaymepehcpmizdl with JWT verification disabled. This separate function keeps the existing `ppic-fms` endpoint untouched. `supabase/config.toml` records the setting for CLI deployment.
 - Set the Supabase secrets before deploying the function.
 - A push to main publishes the site; review the feature branch before merging.
 
