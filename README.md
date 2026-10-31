@@ -21,14 +21,13 @@ The combined workbook's Raw formula omits Chimak. The direct dashboard includes 
 
 The site opens without sign-in and refreshes every five minutes. The site and data endpoint are public: anyone with the link can view or request the returned live order rows. Source row links in the returned data identify the originating spreadsheet and row.
 
-Configure these Supabase project secrets before the function can return source data:
+The function uses the seven source workbook IDs, six tracker workbook IDs, and combined PPIC workbook ID defined in its server-side defaults. Optional `PPIC_SOURCES_JSON`, `PPIC_TRACKERS_JSON`, and `PPIC_REMARKS_SPREADSHEET_ID` secrets can override those defaults.
+
+Configure this Supabase project secret for source access:
 
 - `GOOGLE_SERVICE_ACCOUNT_JSON`: service-account JSON key with read-only Google Sheets API access.
-- `PPIC_SOURCES_JSON`: array of seven source workbook IDs and workflow profiles.
-- `PPIC_TRACKERS_JSON`: array of the six tracking workbook IDs.
-- `PPIC_REMARKS_SPREADSHEET_ID`: combined PPIC workbook ID.
 
-Keep the service-account key and source configuration in Supabase secrets, never in `config.js` or the public repository. The service account needs Viewer access to the seven source workbooks, six tracking workbooks, and combined PPIC workbook. Enable the Google Sheets API in its Google Cloud project.
+Keep the service-account key in Supabase secrets, never in `config.js` or the public repository. Source workbook IDs are not credentials; the public endpoint already returns live order rows by design. The service account needs Viewer access to the seven source workbooks, six tracking workbooks, and combined PPIC workbook. Enable the Google Sheets API in its Google Cloud project.
 
 Source profiles: use `core` for Crius, Medella, Samson, and Anuttama; `regional` for Orbit and Chiros/Sig; and `chimak` for Chimak. Set `skipDrug: true` for Crius. Source objects use `{"name":"Crius","id":"SHEET_ID","profile":"core","skipDrug":true}`; tracker objects use `{"name":"Crius","id":"SHEET_ID"}`.
 
@@ -36,4 +35,5 @@ Source profiles: use `core` for Crius, Medella, Samson, and Anuttama; `regional`
 
 GitHub Pages publishes `index.html`, `app.js`, `styles.css`, and `config.js` from the `main` branch at `https://dme1306.github.io/PPIC/`. The separate `ppic-live` function is deployed with JWT verification disabled; it does not replace the existing `ppic-fms` function.
 
-If the page reports that it cannot load data, check that all four secrets are set, the service account has Viewer access to every configured workbook, and the Google Sheets API is enabled. A push to `main` publishes the website; the `ppic-live` function must be redeployed when its code changes.
+If the page reports that it cannot load data, check that `GOOGLE_SERVICE_ACCOUNT_JSON` is set, the service account has Viewer access to every configured workbook, and the Google Sheets API is enabled. The server response lists any source or tracker sheets that fail to load. A push to `main` publishes the website; the `ppic-live` function must be redeployed when its code changes.
+
