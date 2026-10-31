@@ -1,172 +1,385 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 (function () {
-"use strict";
-var config = window.FMS_CONFIG || {}, allRows = [], rawRecords = [], specRows = [], pendingStatusRows = [], pendingStatusHeaders = [], activeView = "overview";
-var steps = [
-{name:"Step 1",planned:"COL_S",status:"COL_U",person:"Acc. Master"},
-{name:"Step 2",planned:"COL_W",status:"COL_Y",person:"Payment Status"},
-{name:"Step 3",planned:"COL_AA",status:"COL_AC",person:"Docs verification(Legal)"},
-{name:"Step 4",planned:"COL_AE",status:"COL_AH",person:"F&D(STEP 4)"},
-{name:"Step 5",planned:"COL_AI",status:"COL_AK",person:"F&D(STEP 5)"},
-{name:"Step 6",planned:"COL_AN",status:"COL_AP",person:"Plant QA"},
-{name:"Step 7",planned:"COL_AS",status:"COL_AU",person:"Sales Order (for ext prd And Revised)"},
-{name:"Step 8",planned:"COL_AW",status:"COL_AY",person:"Creation Product Master(New Product)"},
-{name:"Step 9",planned:"COL_AZ",status:"COL_BB",person:"Approved Product Master, (New Prd)(Nirmala)"},
-{name:"Step 10",planned:"COL_BC",status:"COL_BE",person:"Sales Order(New Prd)"},
-{name:"Step 11",planned:"COL_BH",status:"COL_BJ",person:"Sale Order Checked"},
-{name:"Step 12",planned:"COL_BK",status:"COL_BM",person:"Sale Order Update in Prod. File"},
-{name:"Step 13",planned:"COL_BN",status:"COL_BP",person:"Sale Order Confirmation"}
-];
-var $ = function(id){return document.getElementById(id);};
-function columnName(index){var name="";while(index>0){var rem=(index-1)%26;name=String.fromCharCode(65+rem)+name;index=Math.floor((index-1)/26);}return name;}
-function rowsFromValues(values){
- if(!Array.isArray(values)||!values.length)return [];
- var headers=values[0]||[];
- return values.slice(1).filter(function(r){return Array.isArray(r)&&r.some(function(v){return v!==""&&v!==null&&v!==undefined;});}).map(function(valuesRow){
-  var obj={};
-  valuesRow.forEach(function(value,i){obj["COL_"+columnName(i+1)]=value===null||value===undefined?"":value;if(headers[i])obj[String(headers[i]).trim()]=value===null||value===undefined?"":value;});
-  return obj;
- });
-}
-function fmtDate(value){if(value===null||value===undefined||value==="")return "—";var d=parseDate(value);return !d?String(value):d.toLocaleString("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});}
-function parseDate(value){
- if(value===null||value===undefined||value==="")return null;
- if(typeof value==="number"&&value>20000&&value<100000){return new Date(Date.UTC(1899,11,30)+value*86400000);}
- var s=String(value).trim(), d=new Date(s);if(!isNaN(d.getTime()))return d;
- var m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);if(m){var year=Number(m[3]);if(year<100)year+=2000;d=new Date(year,Number(m[2])-1,Number(m[1]));return isNaN(d.getTime())?null:d;}
- return null;
-}
-function calculateDelay(planned){var d=parseDate(planned);if(!d)return null;var now=new Date(),roundedDays=Math.round((now.getTime()-d.getTime())/86400000);if(roundedDays>0)return roundedDays*24-(24-d.getHours()-(24-now.getHours()));return roundedDays*24+(24-d.getHours()-(24-now.getHours()));}
-function isPastPlannedDate(planned){var d=parseDate(planned);if(!d)return false;var now=new Date();return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime()<new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();}
-function headerKey(value){return String(value===null||value===undefined?"":value).trim().toLowerCase().replace(/[^a-z0-9]/g,"");}
-function val(row,key){if(Object.prototype.hasOwnProperty.call(row,key))return row[key]===null?"":row[key];var target=headerKey(key);var found=Object.keys(row).find(function(k){return headerKey(k)===target;});return found?((row[found]===null||row[found]===undefined)?"":row[found]):"";}
-function isFilled(value){return value!==null&&value!==undefined&&String(value).trim()!==""&&value!==false;}
-function isWorkflowFilled(value){var text=String(value===null||value===undefined?"":value).trim().toLowerCase();return isFilled(value)&&text!=="yes"&&text!=="is";}
-function cleanPerson(value){var text=String(value===null||value===undefined?"":value).trim();return /^(yes|is)$/i.test(text)?"":text;}
-function makeQueue(records) {
-  var queue = [];
+  "use strict";
 
-  records.forEach(function (row) {
-    // Rule 1: Exclude the order whenever column BS contains any non-blank value.
-    // Only rows with an empty BS cell are eligible for workflow pending checks.
-    if (isFilled(val(row, "COL_BS"))) return;
-
-    // Rule 2: Exclude orders whose Order Status is exactly "Approved/Revised".
-    var orderStatusForFilter = String(val(row, "Order Status") || val(row, "COL_L") || "").trim().toLowerCase().replace(/\\s+/g, "");
-    if (orderStatusForFilter === "approved/revised") return;
-
-    var pending = null;
-
-    // Rule 2: inspect workflow steps from last to first.
-    for (var i = steps.length - 1; i >= 0; i--) {
-      var step = steps[i];
-      var planned = val(row, step.planned);
-      var status = val(row, step.status);
-      var hasPlanned = isWorkflowFilled(planned);
-      var hasStatus = isWorkflowFilled(status);
-
-      // Both blank: this step is unused; continue to the previous step.
-      if (!hasPlanned && !hasStatus) continue;
-
-      // Planned and Status both filled: this workflow boundary is complete.
-      // Do not show this order as pending and do not inspect earlier steps.
-      if (hasPlanned && hasStatus) break;
-
-      // Planned filled, Status blank: this is the pending step to display.
-      if (hasPlanned && !hasStatus) {
-        pending = { step: step, planned: planned };
-        break;
-      }
-
-      // Status filled but Planned blank: ignore this pair and continue backward.
+  var config = window.FMS_CONFIG || {};
+  var apiClient = createClient(config.SUPABASE_URL || "", config.SUPABASE_PUBLISHABLE_KEY || "", {
+    auth: {
+      flowType: "pkce",
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
     }
-
-    // No pending step found: never include this order in the dashboard.
-    if (!pending) return;
-
-    var delay = calculateDelay(pending.planned);
-    queue.push({
-      timestamp: val(row, "Timestamp") || val(row, "COL_A"),
-      ref: val(row, "Ref No.") || val(row, "COL_B"),
-      company: val(row, "Company Name") || val(row, "COL_C"),
-      product: val(row, "Product Name") || val(row, "ProductName") || val(row, "COL_D"),
-      orderStatus: val(row, "Order Status") || val(row, "COL_E"),
-      remarks: val(row, "Remarks") || val(row, "COL_BR"),
-      person: cleanPerson(val(row, "Person Name")) || cleanPerson(val(row, "COL_BU")) || pending.step.person,
-      planned: pending.planned,
-      step: pending.step.name,
-      delayHours: delay === null ? 0 : delay,
-      delayed: isPastPlannedDate(pending.planned),
-      raw: row
-    });
   });
 
-  return queue;
-}
-function esc(value){return String(value===undefined||value===null?"":value).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
-function render(){var query=$("searchInput").value.trim().toLowerCase(),person=$("personFilter").value,step=$("stepFilter").value,state=$("statusFilter").value;var rows=allRows.filter(function(r){var hay=[r.ref,r.company,r.product,r.remarks,r.person,r.step,r.orderStatus].join(" ").toLowerCase();return(!query||hay.indexOf(query)!==-1)&&(!person||r.person===person)&&(!step||r.step===step)&&(!state||(state==="delayed"?r.delayed:!r.delayed));});$("visibleCount").textContent=rows.length+" records";$("tableSummary").textContent="Showing "+rows.length+" of "+allRows.length+" pending orders";$("tableBody").innerHTML=rows.length?rows.map(function(r){return "<tr><td>"+esc(fmtDate(r.timestamp))+"</td><td><strong>"+esc(r.ref||"—")+"</strong></td><td class='company' title='"+esc(r.company)+"'>"+esc(r.company||"—")+"</td><td title='"+esc(r.product)+"'>"+esc(r.product||"—")+"</td><td>"+esc(r.orderStatus||"—")+"</td><td class='remarks' title='"+esc(r.remarks)+"'>"+esc(r.remarks||"—")+"</td><td>"+esc(r.person||"Unassigned")+"</td><td>"+esc(fmtDate(r.planned))+"</td><td>"+esc(r.step)+"</td><td class='delay "+(r.delayed?"overdue":"")+"'>"+esc(r.delayHours+" h")+"</td></tr>";}).join(""):"<tr><td colspan='10' class='empty'>No pending records match these filters.</td></tr>";}
-function fillFilters(){var people=Array.from(new Set(allRows.map(function(r){return r.person;}).filter(Boolean))).sort(),names=Array.from(new Set(allRows.map(function(r){return r.step;})));$("personFilter").innerHTML="<option value=''>All people</option>"+people.map(function(p){return "<option>"+esc(p)+"</option>";}).join("");$("stepFilter").innerHTML="<option value=''>All workflow steps</option>"+names.map(function(n){return "<option>"+esc(n)+"</option>";}).join("");}
-function updateMetrics(records,queue){$("totalOrders").textContent=records.length.toLocaleString("en-IN");$("pendingTasks").textContent=queue.length.toLocaleString("en-IN");$("delayedTasks").textContent=queue.filter(function(r){return r.delayed;}).length.toLocaleString("en-IN");$("peopleCount").textContent=new Set(queue.map(function(r){return r.person;}).filter(Boolean)).size.toLocaleString("en-IN");$("rowCount").textContent="· "+records.length.toLocaleString("en-IN")+" orders";}
-function showError(message){$("dashboard").hidden=true;$("errorPanel").hidden=false;$("errorText").textContent=message;}
-function loadData(){$("refreshBtn").disabled=true;$("refreshBtn").textContent="Loading…";fetch(config.SUPABASE_URL+"/functions/v1/"+(config.FUNCTION_NAME||"ppic-fms"),{method:"GET",headers:{"apikey":config.SUPABASE_PUBLISHABLE_KEY},cache:"no-store"}).then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();}).then(function(body){var values=Array.isArray(body.values)?body.values:[];rawRecords=rowsFromValues(values);allRows=makeQueue(rawRecords);fillFilters();updateMetrics(rawRecords,allRows);$("errorPanel").hidden=true;$("dashboard").hidden=false;$("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});render();}).catch(function(error){showError(error.message||"Unknown connection error");}).finally(function(){$("refreshBtn").disabled=false;$("refreshBtn").textContent="↻ Refresh";});}
+  var session = null;
+  var dashboardData = { tasks: [], specTasks: [], sources: [], warnings: [] };
+  var activeView = "all";
+  var isLoading = false;
+  var latestToken = "";
+  var $ = function (id) { return document.getElementById(id); };
 
-function setView(view){
- activeView=view;
- $("dashboard").hidden=view!=="overview";
- $("specApprovalPanel").hidden=view!=="spec";
- $("pendingStatusPanel").hidden=view!=="pending";
- $("errorPanel").hidden=true;
- $("navOverview").classList.toggle("active",view==="overview");
- $("navSpecApproval").classList.toggle("active",view==="spec");
- $("navPendingStatus").classList.toggle("active",view==="pending");
- $("refreshBtn").hidden=view!=="overview";
- $("lastUpdated").hidden=view==="spec";
- if(view==="spec"&&!specRows.length)loadSpecData();
- if(view==="pending"&&!pendingStatusRows.length)loadPendingStatus();
-}
-function renderSpec(){
- var query=$("specSearchInput").value.trim().toLowerCase();
- var rows=specRows.filter(function(r){return !query||r.slice(0,13).join(" ").toLowerCase().indexOf(query)!==-1;});
- $("specVisibleCount").textContent=rows.length+" records";
- $("specTableSummary").textContent="Showing "+rows.length+" of "+specRows.length+" matching records";
- $("specTableBody").innerHTML=rows.length?rows.map(function(r){return "<tr>"+r.slice(0,13).map(function(v){return "<td>"+esc(v||"—")+"</td>";}).join("")+"</tr>";}).join(""):"<tr><td colspan='13' class='empty'>No spec approval records match these filters.</td></tr>";
-}
-function loadSpecData(){
- $("specRefreshBtn").disabled=true;$("specRefreshBtn").textContent="Loading…";
- fetch(config.SUPABASE_URL+"/functions/v1/"+(config.FUNCTION_NAME||"ppic-fms")+"?tab=spec-approval",{method:"GET",headers:{"apikey":config.SUPABASE_PUBLISHABLE_KEY},cache:"no-store"})
- .then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();})
- .then(function(body){
-  var values=Array.isArray(body.values)?body.values:[];
-  var headers=values.length&&Array.isArray(values[0])?values[0]:[];
-  specRows=values.slice(1).filter(function(r){return Array.isArray(r);}).map(function(r){return Array.from({length:13},function(_,i){return r[i]===null||r[i]===undefined?"":String(r[i]);});});
-  $("specTableHead").innerHTML="<tr>"+headers.slice(0,13).map(function(h){return "<th>"+esc(h||"Column")+"</th>";}).join("")+"</tr>";
-  $("specRowCount").textContent="· "+specRows.length+" matching records";
-  $("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
-  renderSpec();
- })
- .catch(function(error){$("specTableHead").innerHTML="";$("specTableBody").innerHTML="<tr><td colspan='13' class='empty'>Could not load spec approval records: "+esc(error.message||"Unknown error")+"</td></tr>";$("specTableSummary").textContent="Load failed";})
- .finally(function(){$("specRefreshBtn").disabled=false;$("specRefreshBtn").textContent="↻ Refresh";});
-}
+  function esc(value) {
+    return String(value === null || value === undefined ? "" : value).replace(/[&<>"']/g, function (character) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[character];
+    });
+  }
 
+  function normalize(value) {
+    return String(value === null || value === undefined ? "" : value).trim().toLowerCase();
+  }
 
-function renderPendingStatus(){
- var query=$("pendingStatusSearch").value.trim().toLowerCase(),status=$("pendingStatusFilter").value;
- var rows=pendingStatusRows.filter(function(r){var hay=r.join(" ").toLowerCase();return(!query||hay.indexOf(query)!==-1)&&(!status||String(r[18]||"")===status);});
- $("pendingStatusVisibleCount").textContent=rows.length+" records";$("pendingStatusSummary").textContent="Showing "+rows.length+" of "+pendingStatusRows.length+" source records";
- $("pendingStatusTableBody").innerHTML=rows.length?rows.map(function(r){return "<tr>"+pendingStatusHeaders.map(function(_,i){var v=r[i]===undefined?"":r[i];var cls=i===18?"status-cell":(i===19?"pending-days":"");return "<td class='"+cls+"'>"+esc(v===""?"—":v)+"</td>";}).join("")+"</tr>";}).join(""):"<tr><td colspan='"+Math.max(1,pendingStatusHeaders.length)+"' class='empty'>No pending records match these filters.</td></tr>";
-}
-function loadPendingStatus(){
- $("pendingStatusRefreshBtn").disabled=true;$("pendingStatusRefreshBtn").textContent="Loading…";
- fetch(config.SUPABASE_URL+"/functions/v1/"+(config.FUNCTION_NAME||"ppic-fms")+"?tab=pending-status",{method:"GET",headers:{"apikey":config.SUPABASE_PUBLISHABLE_KEY},cache:"no-store"})
- .then(function(response){if(!response.ok)return response.json().catch(function(){return {};}).then(function(body){throw new Error(body.error||("Request failed ("+response.status+")"));});return response.json();})
- .then(function(body){var values=Array.isArray(body.values)?body.values:[];pendingStatusHeaders=values.length&&Array.isArray(values[0])?values[0].map(function(h){return String(h||"");}):[];pendingStatusRows=values.slice(1).filter(function(r){return Array.isArray(r);}).map(function(r){return Array.from({length:pendingStatusHeaders.length},function(_,i){return r[i]===null||r[i]===undefined?"":String(r[i]);});});
-  var statuses=Array.from(new Set(pendingStatusRows.map(function(r){return String(r[18]||"");}).filter(Boolean))).sort();$("pendingStatusFilter").innerHTML="<option value=''>All pending statuses</option>"+statuses.map(function(s){return "<option value='"+esc(s)+"'>"+esc(s)+"</option>";}).join("");$("pendingStatusTableHead").innerHTML="<tr>"+pendingStatusHeaders.map(function(h){return "<th>"+esc(h||"Column")+"</th>";}).join("")+"</tr>";
-  var days=pendingStatusRows.map(function(r){var n=Number(r[19]);return Number.isFinite(n)&&String(r[19]).trim()!==""?n:null;}).filter(function(n){return n!==null;});$("psTotal").textContent=pendingStatusRows.length.toLocaleString("en-IN");$("psStages").textContent=statuses.length.toLocaleString("en-IN");$("psOver7").textContent=days.filter(function(n){return n>7;}).length.toLocaleString("en-IN");$("psLongest").textContent=days.length?Math.max.apply(null,days)+" days":"—";$("pendingStatusRowCount").textContent="· "+pendingStatusRows.length+" source records";$("lastUpdated").textContent="Updated "+new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});renderPendingStatus();
- })
- .catch(function(error){$("pendingStatusTableHead").innerHTML="";$("pendingStatusTableBody").innerHTML="<tr><td class='empty'>Could not load Pending Status: "+esc(error.message||"Unknown error")+". Confirm the Google Sheet is shared with the dashboard service account.</td></tr>";$("pendingStatusSummary").textContent="Load failed";})
- .finally(function(){$("pendingStatusRefreshBtn").disabled=false;$("pendingStatusRefreshBtn").textContent="↻ Refresh";});
-}
+  function parseDate(value) {
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "number" && value > 20000 && value < 100000) {
+      return new Date(Date.UTC(1899, 11, 30) + value * 86400000 - 330 * 60000);
+    }
 
-function init(){loadData();}
-$("navOverview").addEventListener("click",function(){setView("overview");});$("navSpecApproval").addEventListener("click",function(){setView("spec");});$("navPendingStatus").addEventListener("click",function(){setView("pending");});$("pendingStatusRefreshBtn").addEventListener("click",loadPendingStatus);$("pendingStatusSearch").addEventListener("input",renderPendingStatus);$("pendingStatusFilter").addEventListener("change",renderPendingStatus);$("specRefreshBtn").addEventListener("click",loadSpecData);$("specSearchInput").addEventListener("input",renderSpec);
-["searchInput","personFilter","stepFilter","statusFilter"].forEach(function(id){$(id).addEventListener("input",render);$(id).addEventListener("change",render);});$("refreshBtn").addEventListener("click",loadData);$("retryBtn").addEventListener("click",loadData);$("clearFilters").addEventListener("click",function(){$("searchInput").value="";$("personFilter").value="";$("stepFilter").value="";$("statusFilter").value="";render();});init();setInterval(function(){if(activeView==="overview"&&!$("dashboard").hidden)render();},60000);
+    var text = String(value).trim();
+    var iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (iso) {
+      return new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]), Number(iso[4] || 0), Number(iso[5] || 0), Number(iso[6] || 0)) - 330 * 60000);
+    }
+    var dmy = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (dmy) {
+      var year = Number(dmy[3]);
+      if (year < 100) year += 2000;
+      return new Date(Date.UTC(year, Number(dmy[2]) - 1, Number(dmy[1]), Number(dmy[4] || 0), Number(dmy[5] || 0), Number(dmy[6] || 0)) - 330 * 60000);
+    }
+    var parsed = new Date(text);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  function fmtDate(value) {
+    var date = parseDate(value);
+    return date ? date.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    }) : (value ? String(value) : "—");
+  }
+
+  function ageLabel(hours) {
+    if (hours === null || hours === undefined || !Number.isFinite(Number(hours))) return "—";
+    var rounded = Math.round(Number(hours));
+    if (rounded < 0) return "Due in " + Math.abs(rounded) + "h";
+    if (rounded >= 24) return Math.floor(rounded / 24) + "d " + (rounded % 24) + "h";
+    return rounded + "h";
+  }
+
+  function distinctTasks(rows) {
+    return new Set(rows.map(function (row) { return row.source + "|" + row.sourceRow; })).size;
+  }
+
+  function currentRows() {
+    if (activeView === "spec") return dashboardData.specTasks || [];
+    if (activeView === "aging") {
+      return (dashboardData.tasks || []).filter(function (row) {
+        return Number(row.orderAgeDays) >= 5;
+      });
+    }
+    return dashboardData.tasks || [];
+  }
+
+  function filteredRows() {
+    var search = $("searchInput").value.trim().toLowerCase();
+    var source = $("sourceFilter").value;
+    var team = $("teamFilter").value;
+    var stage = $("stageFilter").value;
+    var production = $("productionFilter").value;
+    var due = $("dueFilter").value;
+
+    return currentRows().filter(function (row) {
+      var haystack = [
+        row.source, row.ref, row.company, row.product, row.orderStatus, row.status,
+        row.step, row.team, row.owner, row.remarks, row.ppicRemark
+      ].join(" ").toLowerCase();
+      var flag = normalize(row.productionFlag);
+      var hasProductionFlag = flag !== "" && flag !== "unknown";
+      var isProductionYes = flag === "yes";
+
+      return (!search || haystack.indexOf(search) !== -1) &&
+        (!source || row.source === source) &&
+        (!team || row.team === team) &&
+        (!stage || row.step === stage) &&
+        (!production ||
+          (production === "yes" && isProductionYes) ||
+          (production === "no" && hasProductionFlag && !isProductionYes) ||
+          (production === "unknown" && !hasProductionFlag)) &&
+        (!due || (due === "overdue" ? Boolean(row.overdue) : !row.overdue));
+    });
+  }
+
+  function renderMetrics() {
+    var tasks = dashboardData.tasks || [];
+    $("ordersMetric").textContent = distinctTasks(tasks).toLocaleString("en-IN");
+    $("tasksMetric").textContent = tasks.length.toLocaleString("en-IN");
+    $("overdueMetric").textContent = tasks.filter(function (row) { return row.overdue; }).length.toLocaleString("en-IN");
+
+    var agingOrders = new Set(tasks.filter(function (row) {
+      return Number(row.orderAgeDays) >= 5;
+    }).map(function (row) { return row.source + "|" + row.sourceRow; }));
+    $("agingMetric").textContent = agingOrders.size.toLocaleString("en-IN");
+  }
+
+  function renderBottlenecks() {
+    var totals = new Map();
+    (dashboardData.tasks || []).forEach(function (row) {
+      var label = row.team || "Unassigned";
+      totals.set(label, (totals.get(label) || 0) + 1);
+    });
+    var sorted = Array.from(totals.entries()).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 6);
+    var max = sorted.length ? sorted[0][1] : 1;
+    $("bottleneckTotal").textContent = (dashboardData.tasks || []).length.toLocaleString("en-IN") + " tasks";
+    $("bottleneckList").innerHTML = sorted.length ? sorted.map(function (entry) {
+      var width = Math.max(4, Math.round((entry[1] / max) * 100));
+      return "<div class='bottleneck-row'><span class='bottleneck-name'>" + esc(entry[0]) +
+        "</span><span class='bottleneck-track'><span class='bottleneck-bar' style='width:" + width + "%'></span></span><strong>" +
+        entry[1].toLocaleString("en-IN") + "</strong></div>";
+    }).join("") : "<p class='empty compact-empty'>No pending tasks to group.</p>";
+  }
+
+  function setSelectOptions(id, defaultText, values) {
+    var select = $(id);
+    var current = select.value;
+    select.innerHTML = "<option value=''>" + esc(defaultText) + "</option>" + values.map(function (value) {
+      return "<option value='" + esc(value) + "'>" + esc(value) + "</option>";
+    }).join("");
+    if (values.indexOf(current) !== -1) select.value = current;
+  }
+
+  function renderFilters() {
+    var tasks = (dashboardData.tasks || []).concat(dashboardData.specTasks || []);
+    setSelectOptions("sourceFilter", "All companies", Array.from(new Set(tasks.map(function (r) { return r.source; }).filter(Boolean))).sort());
+    setSelectOptions("teamFilter", "All teams", Array.from(new Set(tasks.map(function (r) { return r.team; }).filter(Boolean))).sort());
+    setSelectOptions("stageFilter", "All steps", Array.from(new Set(tasks.map(function (r) { return r.step; }).filter(Boolean))).sort());
+  }
+
+  function renderWarnings() {
+    var warnings = dashboardData.warnings || [];
+    var banner = $("sourceWarnings");
+    if (!warnings.length) {
+      banner.hidden = true;
+      banner.innerHTML = "";
+      return;
+    }
+    banner.hidden = false;
+    banner.innerHTML = "<strong>Source data needs attention.</strong><ul>" +
+      warnings.map(function (warning) { return "<li>" + esc(warning) + "</li>"; }).join("") +
+      "</ul><span>Displayed records may be incomplete.</span>";
+  }
+
+  function renderTable() {
+    var rows = filteredRows();
+    $("visibleCount").textContent = rows.length.toLocaleString("en-IN") + " tasks";
+    $("tableSummary").textContent = "Showing " + rows.length.toLocaleString("en-IN") +
+      " of " + currentRows().length.toLocaleString("en-IN") + " tasks in this view";
+
+    $("tableBody").innerHTML = rows.length ? rows.map(function (row) {
+      var note = [row.remarks, row.ppicRemark].filter(function (value) {
+        return value !== null && value !== undefined && String(value).trim() !== "";
+      }).join(" · ");
+      var status = row.overdue ? "<span class='state-pill overdue-pill'>Past due</span>" : "<span class='state-pill current-pill'>On plan</span>";
+      var prod = normalize(row.productionFlag) === "yes" ?
+        "<span class='state-pill production-pill'>Yes</span>" :
+        (normalize(row.productionFlag) === "unknown" || !row.productionFlag ? "Unknown" : esc(row.productionFlag));
+      var sourceLink = String(row.sourceUrl || "");
+      var linkHtml = sourceLink.indexOf("https://docs.google.com/spreadsheets/") === 0 ?
+        "<a class='source-link' href='" + esc(sourceLink) + "' target='_blank' rel='noopener noreferrer'>Open row ↗</a>" : "—";
+      var stepAge = ageLabel(row.stepAgeHours);
+      var ageClass = row.overdue ? "age overdue-text" : "age";
+
+      return "<tr>" +
+        "<td><span class='source-chip'>" + esc(row.source || "—") + "</span></td>" +
+        "<td><strong class='ref-number'>" + esc(row.ref || "—") + "</strong></td>" +
+        "<td class='company-cell'><strong>" + esc(row.company || "—") + "</strong><span>" + esc(row.product || "—") + "</span></td>" +
+        "<td>" + esc(row.orderStatus || row.status || "—") + "</td>" +
+        "<td><strong>" + esc(row.step || "—") + "</strong><span class='subtle'>" + esc(row.owner || "") + "</span></td>" +
+        "<td>" + esc(row.team || "Unassigned") + "</td>" +
+        "<td>" + esc(fmtDate(row.planned)) + "<span class='subtle'>" + status + "</span></td>" +
+        "<td class='" + ageClass + "'>" + esc(stepAge) + "</td>" +
+        "<td>" + (row.orderAgeDays === null || row.orderAgeDays === undefined ? "—" : esc(row.orderAgeDays + " days")) + "</td>" +
+        "<td>" + prod + "</td>" +
+        "<td class='remarks-cell' title='" + esc(note) + "'>" + esc(note || "—") + "</td>" +
+        "<td>" + linkHtml + "</td>" +
+        "</tr>";
+    }).join("") : "<tr><td colspan='12' class='empty'>No pending tasks match these filters.</td></tr>";
+
+    var headings = {
+      all: ["All pending work", "One row per pending workflow group, linked to its original source row."],
+      spec: ["QA / spec approval pending", "Orders where the QA / product specification step is planned and its completion field is blank."],
+      aging: ["Orders aged 5+ days", "Pending tasks for orders at least five calendar days old."]
+    };
+    $("queueTitle").textContent = headings[activeView][0];
+    $("queueDescription").textContent = headings[activeView][1];
+  }
+
+  function render() {
+    renderMetrics();
+    renderBottlenecks();
+    renderWarnings();
+    renderTable();
+  }
+
+  function updateSourceSummary() {
+    var sources = dashboardData.sources || [];
+    var ready = sources.filter(function (source) { return source.ok; }).length;
+    $("sourceSummary").textContent = ready + "/" + sources.length + " sources · " +
+      sources.reduce(function (sum, source) { return sum + (Number(source.rows) || 0); }, 0).toLocaleString("en-IN") + " source rows";
+  }
+
+  function showSignedIn() {
+    $("loginPanel").hidden = true;
+    $("dashboard").hidden = false;
+    $("errorPanel").hidden = true;
+    $("refreshBtn").hidden = false;
+    $("signOutBtn").hidden = false;
+    $("userEmail").hidden = false;
+    $("userEmail").textContent = session && session.user ? session.user.email || "Signed in" : "Signed in";
+  }
+
+  function showSignedOut() {
+    $("loginPanel").hidden = false;
+    $("dashboard").hidden = true;
+    $("errorPanel").hidden = true;
+    $("refreshBtn").hidden = true;
+    $("signOutBtn").hidden = true;
+    $("userEmail").hidden = true;
+    $("userEmail").textContent = "";
+    $("lastUpdated").textContent = "Not connected";
+  }
+
+  function showError(message) {
+    $("dashboard").hidden = true;
+    $("errorPanel").hidden = false;
+    $("errorText").textContent = message || "Unknown connection error.";
+  }
+
+  async function loadDashboard(force) {
+    if (!session || isLoading) return;
+    if (!force && latestToken === session.access_token && dashboardData.tasks.length) return;
+    isLoading = true;
+    latestToken = session.access_token;
+    $("refreshBtn").disabled = true;
+    $("refreshBtn").textContent = "Loading…";
+    try {
+      var response = await fetch(config.SUPABASE_URL + "/functions/v1/" + (config.FUNCTION_NAME || "ppic-fms"), {
+        method: "GET",
+        headers: {
+          apikey: config.SUPABASE_PUBLISHABLE_KEY,
+          authorization: "Bearer " + session.access_token
+        },
+        cache: "no-store"
+      });
+      var body = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          $("authMessage").textContent = body.error || "This Google account cannot open the dashboard.";
+          await apiClient.auth.signOut();
+          throw new Error(body.error || "Your account is not authorized.");
+        }
+        throw new Error(body.error || ("Request failed (" + response.status + ")."));
+      }
+
+      dashboardData = {
+        tasks: Array.isArray(body.tasks) ? body.tasks : [],
+        specTasks: Array.isArray(body.specTasks) ? body.specTasks : [],
+        sources: Array.isArray(body.sources) ? body.sources : [],
+        warnings: Array.isArray(body.warnings) ? body.warnings : []
+      };
+      showSignedIn();
+      renderFilters();
+      updateSourceSummary();
+      render();
+      $("lastUpdated").textContent = "Updated " + new Date().toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    } catch (error) {
+      if (session) showError(error && error.message ? error.message : "Could not load live source data.");
+    } finally {
+      isLoading = false;
+      $("refreshBtn").disabled = false;
+      $("refreshBtn").textContent = "↻ Refresh";
+    }
+  }
+
+  function setView(view) {
+    activeView = view;
+    $("navAll").classList.toggle("active", view === "all");
+    $("navSpec").classList.toggle("active", view === "spec");
+    $("navAging").classList.toggle("active", view === "aging");
+    renderTable();
+  }
+
+  async function signIn() {
+    $("authMessage").textContent = "";
+    var result = await apiClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + window.location.pathname }
+    });
+    if (result.error) $("authMessage").textContent = result.error.message;
+  }
+
+  async function signOut() {
+    await apiClient.auth.signOut();
+    session = null;
+    dashboardData = { tasks: [], specTasks: [], sources: [], warnings: [] };
+    latestToken = "";
+    showSignedOut();
+  }
+
+  function bindEvents() {
+    $("signInBtn").addEventListener("click", signIn);
+    $("signOutBtn").addEventListener("click", signOut);
+    $("refreshBtn").addEventListener("click", function () { loadDashboard(true); });
+    $("retryBtn").addEventListener("click", function () { loadDashboard(true); });
+    $("navAll").addEventListener("click", function () { setView("all"); });
+    $("navSpec").addEventListener("click", function () { setView("spec"); });
+    $("navAging").addEventListener("click", function () { setView("aging"); });
+    ["searchInput", "sourceFilter", "teamFilter", "stageFilter", "productionFilter", "dueFilter"].forEach(function (id) {
+      $(id).addEventListener("input", renderTable);
+      $(id).addEventListener("change", renderTable);
+    });
+    $("clearFilters").addEventListener("click", function () {
+      ["searchInput", "sourceFilter", "teamFilter", "stageFilter", "productionFilter", "dueFilter"].forEach(function (id) {
+        $(id).value = "";
+      });
+      renderTable();
+    });
+  }
+
+  async function init() {
+    bindEvents();
+    apiClient.auth.onAuthStateChange(function (_event, nextSession) {
+      session = nextSession;
+      if (session) {
+        showSignedIn();
+        window.setTimeout(function () { loadDashboard(false); }, 0);
+      } else {
+        showSignedOut();
+      }
+    });
+
+    var result = await apiClient.auth.getSession();
+    session = result.data && result.data.session ? result.data.session : null;
+    if (session) {
+      showSignedIn();
+      await loadDashboard(false);
+    } else {
+      showSignedOut();
+    }
+
+    window.setInterval(function () {
+      if (session && document.visibilityState === "visible") loadDashboard(true);
+    }, 300000);
+  }
+
+  init();
 })();
+
