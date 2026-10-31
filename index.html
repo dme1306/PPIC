@@ -43,25 +43,11 @@
         </div>
         <div class="top-actions">
           <span id="lastUpdated" class="last-updated">Not connected</span>
-          <span id="userEmail" class="user-email" hidden></span>
-          <button id="refreshBtn" class="btn secondary" type="button" hidden>↻ Refresh</button>
-          <button id="signOutBtn" class="btn text-btn" type="button" hidden>Sign out</button>
+          <button id="refreshBtn" class="btn secondary" type="button">↻ Refresh</button>
         </div>
       </header>
 
-      <section id="loginPanel" class="login-panel">
-        <div class="login-icon">🔒</div>
-        <div>
-          <h2>Sign in to open the dashboard</h2>
-          <p>Use an approved Google account to see live PPIC source data.</p>
-        </div>
-        <div class="login-action">
-          <button id="signInBtn" class="btn primary" type="button">Continue with Google</button>
-          <p id="authMessage" class="auth-message" aria-live="polite"></p>
-        </div>
-      </section>
-
-      <section id="dashboard" hidden>
+      <section id="dashboard">
         <div id="sourceWarnings" class="warning-banner" hidden></div>
 
         <div class="toolbar">
@@ -150,7 +136,7 @@
                 </tr>
               </thead>
               <tbody id="tableBody">
-                <tr><td colspan="12" class="empty">Sign in to load live records.</td></tr>
+                <tr><td colspan="12" class="empty">Loading live source records…</td></tr>
               </tbody>
             </table>
           </div>
@@ -159,7 +145,7 @@
             <button id="clearFilters" class="btn text-btn" type="button">Clear filters</button>
           </div>
         </section>
-        <p class="footnote">Data is read from the original company Data tabs. The QA/spec view uses the pending QA step; the 5+ day view uses calendar days from the source timestamp.</p>
+        <p class="footnote">Data is read from the original company Data tabs. The QA/spec view uses the pending QA step; the 5+ day view uses calendar days from the source timestamp. Anyone with this public link can view the live order data.</p>
       </section>
 
       <section id="errorPanel" class="error-panel" hidden>
@@ -171,7 +157,7 @@
   </div>
 
   <script src="config.js?v=ppic-direct-source"></script>
-  <script type="module" src="app.js?v=ppic-direct-source"></script>
+  <script src="app.js?v=ppic-direct-source"></script>
 </body>
 </html>
 
