@@ -1,10 +1,8 @@
-const APP_ORIGIN = "https://dme1306.github.io";
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": APP_ORIGIN,
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "apikey, authorization, content-type",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Max-Age": "86400",
-  "Vary": "Origin",
   "Content-Type": "application/json",
   "Cache-Control": "no-store"
 };
@@ -59,33 +57,6 @@ async function googleAccessToken(serviceAccount: { client_email: string; private
   const body = await response.json();
   if (!response.ok || !body.access_token) throw new Error("Google authentication failed");
   return body.access_token as string;
-}
-
-async function authorize(request: Request) {
-  const bearer = request.headers.get("authorization") || "";
-  const tokenMatch = bearer.match(/^Bearer\s+(.+)$/i);
-  if (!tokenMatch) return { ok: false as const, status: 401, message: "Sign in to view this dashboard." };
-
-  const projectUrl = Deno.env.get("SUPABASE_URL");
-  const publishableKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
-  const allowedEmails = (Deno.env.get("ALLOWED_EMAILS") || "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-  if (!projectUrl || !publishableKey || !allowedEmails.length) {
-    return { ok: false as const, status: 503, message: "Dashboard access is not configured." };
-  }
-
-  const response = await fetch(projectUrl.replace(/\/$/, "") + "/auth/v1/user", {
-    headers: { apikey: publishableKey, authorization: "Bearer " + tokenMatch[1] }
-  });
-  if (!response.ok) return { ok: false as const, status: 401, message: "Your sign-in session is invalid or expired." };
-  const user = await response.json();
-  const email = String(user.email || "").trim().toLowerCase();
-  if (!email || !allowedEmails.includes(email)) {
-    return { ok: false as const, status: 403, message: "Your account is not on the PPIC dashboard access list." };
-  }
-  return { ok: true as const, email };
 }
 
 type Source = { name: string; id: string; profile: string; skipDrug: boolean };
@@ -497,9 +468,6 @@ async function buildDashboard(token: string) {
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   if (request.method !== "GET") return reply({ error: "Method not allowed." }, 405);
-
-  const access = await authorize(request);
-  if (!access.ok) return reply({ error: access.message }, access.status);
 
   const serviceAccountJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
   if (!serviceAccountJson) return reply({ error: "Google Sheets access is not configured." }, 503);
