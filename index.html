@@ -1,9 +1,162 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0b1220"><title>Crius FMS Dashboard</title><link rel="stylesheet" href="styles.css"></head>
-<body><div class="app-shell"><aside class="sidebar"><div class="brand-mark">C</div><div class="brand-copy"><strong>CRIUS</strong><span>FLOW MANAGEMENT</span></div><div class="side-label">WORKSPACE</div><button class="nav-item active" id="navOverview" type="button"><span>▦</span> FMS Overview</button><button class="nav-item" id="navPendingStatus" type="button"><span>◷</span> Pending Status</button><button class="nav-item" id="navSpecApproval" type="button"><span>✓</span> Spec Approval Pending</button><div class="side-note"><span class="status-dot"></span><span>Connected data source<br><strong>Google Sheets · Data</strong></span></div><div class="sidebar-footer">Public link dashboard</div></aside>
-<main class="main"><header class="topbar"><div><div class="eyebrow">OPERATIONS / WORKFLOW</div><h1>FMS Dashboard</h1><p class="subtitle">Track order progress, pending steps and overdue work.</p></div><div class="top-actions"><span id="lastUpdated" class="last-updated">Connecting…</span><button id="refreshBtn" class="btn secondary" type="button">↻ Refresh</button></div></header>
-<section id="dashboard" hidden><div class="toolbar"><div class="data-status"><span class="status-dot"></span><span>Live sheet data</span><span id="rowCount" class="muted"></span></div><div class="filters"><input id="searchInput" type="search" placeholder="Search ref, company, product…" aria-label="Search records"><select id="personFilter" aria-label="Filter by person"><option value="">All people</option></select><select id="stepFilter" aria-label="Filter by step"><option value="">All workflow steps</option></select><select id="statusFilter" aria-label="Filter by status"><option value="">All pending states</option><option value="pending">Pending</option><option value="delayed">Delayed</option></select></div></div>
-<section class="metrics"><article class="metric-card"><span class="metric-label">Total orders</span><strong id="totalOrders">—</strong><span class="metric-foot">Records in Data tab</span></article><article class="metric-card"><span class="metric-label">Pending tasks</span><strong id="pendingTasks">—</strong><span class="metric-foot">Planned, not confirmed</span></article><article class="metric-card"><span class="metric-label">Delayed tasks</span><strong id="delayedTasks">—</strong><span class="metric-foot">Past planned date</span></article><article class="metric-card"><span class="metric-label">People with pending work</span><strong id="peopleCount">—</strong><span class="metric-foot">Distinct assignees</span></article></section>
-<section class="panel"><div class="panel-heading"><div><h2>Workflow queue</h2><p>One row per order's current pending step.</p></div><span id="visibleCount" class="count-pill">0 records</span></div><div class="table-wrap"><table><thead><tr><th>Timestamp</th><th>Ref No.</th><th>Company Name</th><th>Product Name</th><th>Order Status</th><th>Remarks</th><th>Person Name</th><th>Planned Date</th><th>Steps</th><th>Delay Hours</th></tr></thead><tbody id="tableBody"><tr><td colspan="10" class="empty">Loading records…</td></tr></tbody></table></div><div class="table-footer"><span id="tableSummary">Loading data…</span><button id="clearFilters" class="btn text-btn" type="button">Clear filters</button></div></section><p class="footnote">Dashboard reads the Data tab only. Anyone with this link can view the dashboard data. Pending means a planned field is filled while its matching status/confirmation field is blank.</p></section>
-<section id="pendingStatusPanel" hidden><div class="toolbar"><div class="data-status"><span class="status-dot"></span><span>Live sheet data · Pendings Status</span><span id="pendingStatusRowCount" class="muted"></span></div><div class="filters"><input id="pendingStatusSearch" type="search" placeholder="Search ref, company, product, status…" aria-label="Search pending status records"><select id="pendingStatusFilter" aria-label="Filter by pending status"><option value="">All pending statuses</option></select></div></div><section class="metrics"><article class="metric-card"><span class="metric-label">Pending records</span><strong id="psTotal">—</strong><span class="metric-foot">Rows in Pendings Status</span></article><article class="metric-card"><span class="metric-label">Different pending stages</span><strong id="psStages">—</strong><span class="metric-foot">Unique status labels</span></article><article class="metric-card"><span class="metric-label">Pending over 7 days</span><strong id="psOver7">—</strong><span class="metric-foot">Pending Days greater than 7</span></article><article class="metric-card"><span class="metric-label">Longest pending</span><strong id="psLongest">—</strong><span class="metric-foot">Maximum Pending Days</span></article></section><section class="panel"><div class="panel-heading"><div><h2>Pending Status Details</h2><p>Source columns and status labels are displayed from the sheet without rewriting their values.</p></div><span id="pendingStatusVisibleCount" class="count-pill">0 records</span></div><div class="table-wrap"><table><thead id="pendingStatusTableHead"></thead><tbody id="pendingStatusTableBody"><tr><td class="empty">Loading records…</td></tr></tbody></table></div><div class="table-footer"><span id="pendingStatusSummary">Loading data…</span><button id="pendingStatusRefreshBtn" class="btn secondary" type="button">↻ Refresh</button></div></section></section><section id="specApprovalPanel" hidden><div class="toolbar"><div class="data-status"><span class="status-dot"></span><span>Live sheet data · Raw tab</span><span id="specRowCount" class="muted"></span></div><div class="filters"><input id="specSearchInput" type="search" placeholder="Search spec approval records…" aria-label="Search spec approval records"></div></div><section class="panel"><div class="panel-heading"><div><h2>Spec Approval Pending</h2><p>Raw records where A is populated, G is not CANCEL, and Q is Yes; sorted by P descending.</p></div><span id="specVisibleCount" class="count-pill">0 records</span></div><div class="table-wrap"><table><thead id="specTableHead"></thead><tbody id="specTableBody"><tr><td class="empty">Loading records…</td></tr></tbody></table></div><div class="table-footer"><span id="specTableSummary">Loading data…</span><button id="specRefreshBtn" class="btn secondary" type="button">↻ Refresh</button></div></section></section>
-<section id="errorPanel" class="error-panel" hidden><strong>Could not load dashboard data</strong><p id="errorText">Check the backend configuration and try again.</p><button id="retryBtn" class="btn secondary" type="button">Try again</button></section></main></div><script src="config.js?v=ppic-fms-20261028"></script><script src="app.js?v=ppic-fms-pending-status"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a2d">
+  <meta name="robots" content="noindex,nofollow">
+  <title>PPIC Escalation Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark">P</div>
+        <div class="brand-copy">
+          <strong>PPIC</strong>
+          <span>ESCALATION DESK</span>
+        </div>
+      </div>
+
+      <div class="side-label">WORK QUEUE</div>
+      <button class="nav-item active" id="navAll" type="button"><span>▦</span> Main escalation queue</button>
+      <button class="nav-item" id="navSpec" type="button"><span>✓</span> QA / spec pending</button>
+      <button class="nav-item" id="navAging" type="button"><span>◷</span> 5 Days (age &gt; 4)</button>
+
+      <div class="sidebar-source">
+        <span class="source-dot"></span>
+        <div>
+          <strong>Live source sheets</strong>
+          <span>Read-only · refreshes every 5 min</span>
+        </div>
+      </div>
+      <div class="sidebar-footer">PPIC operations dashboard</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">OPERATIONS / ESCALATIONS</div>
+          <h1>PPIC Escalation Dashboard</h1>
+          <p class="subtitle">Live output from the original PPIC source sheets, with each pending step, owner, and aging detail. No sign-in required.</p>
+        </div>
+        <div class="top-actions">
+          <span id="lastUpdated" class="last-updated">Not connected</span>
+          <button id="refreshBtn" class="btn secondary" type="button">↻ Refresh</button>
+        </div>
+      </header>
+
+      <section id="dashboard">
+        <div id="sourceWarnings" class="warning-banner" hidden></div>
+
+        <div class="toolbar">
+          <div class="data-status">
+            <span id="sourceStatusDot" class="status-dot connecting"></span>
+            <span id="connectionLabel">Connecting to source sheets…</span>
+            <span id="sourceSummary" class="muted"></span>
+          </div>
+          <div class="filters">
+            <input id="searchInput" type="search" placeholder="Search ref, company, product…" aria-label="Search orders">
+            <select id="sourceFilter" aria-label="Filter by source"><option value="">All companies</option></select>
+            <select id="teamFilter" aria-label="Filter by responsible team"><option value="">All teams</option></select>
+            <select id="stageFilter" aria-label="Filter by pending step"><option value="">All steps</option></select>
+            <select id="dueFilter" aria-label="Filter by due status">
+              <option value="">All due statuses</option>
+              <option value="overdue">Past due</option>
+              <option value="ontime">Not past due</option>
+            </select>
+          </div>
+        </div>
+
+        <section class="metrics" aria-label="Dashboard summary">
+          <article class="metric-card">
+            <span class="metric-label">Orders with pending work</span>
+            <strong id="ordersMetric">—</strong>
+            <span class="metric-foot">Distinct source orders</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Pending tasks</span>
+            <strong id="tasksMetric">—</strong>
+            <span class="metric-foot">Current workflow group outputs</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Past due</span>
+            <strong id="overdueMetric">—</strong>
+            <span class="metric-foot">Planned date is before today</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Orders aged 5+ days</span>
+            <strong id="agingMetric">—</strong>
+            <span class="metric-foot">Calendar days from source timestamp</span>
+          </article>
+        </section>
+
+        <section class="panel bottleneck-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Where work is waiting</h2>
+              <p>Pending tasks grouped by responsible team.</p>
+            </div>
+            <span id="bottleneckTotal" class="count-pill">0 tasks</span>
+          </div>
+          <div id="bottleneckList" class="bottleneck-list"></div>
+        </section>
+
+        <section class="panel queue-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 id="queueTitle">Main escalation queue</h2>
+              <p id="queueDescription">One row per pending workflow group, linked to its original source row.</p>
+            </div>
+            <span id="visibleCount" class="count-pill">0 tasks</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Location</th>
+                  <th>Timestamp</th>
+                  <th>Ref No.</th>
+                  <th>Company name</th>
+                  <th>Product name</th>
+                  <th>Order status</th>
+                  <th>Remarks</th>
+                  <th>Status</th>
+                  <th>Pending step</th>
+                  <th>Responsible team</th>
+                  <th>Planned date</th>
+                  <th>Delay hours</th>
+                  <th>Customer sales date</th>
+                  <th>Concern person email</th>
+                  <th>Order age</th>
+                  <th>Production file</th>
+                  <th>PPIC remarks</th>
+                  <th>Source row</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <tr><td colspan="18" class="empty">Loading live source records…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="table-footer">
+            <span id="tableSummary">No data loaded</span>
+            <button id="clearFilters" class="btn text-btn" type="button">Clear filters</button>
+          </div>
+        </section>
+        <p class="footnote">Main follows the workbook filters; QA/spec shows the pending QA stage; 5 Days follows calculated age &gt; 4. Data refreshes directly from the source workbooks. Anyone with this public link can view live order rows.</p>
+      </section>
+
+      <section id="errorPanel" class="error-panel" hidden>
+        <strong>Could not load dashboard data</strong>
+        <p id="errorText">Check the connection and try again.</p>
+        <button id="retryBtn" class="btn secondary" type="button">Try again</button>
+      </section>
+    </main>
+  </div>
+
+  <script src="config.js?v=ppic-sheet-logic-2"></script>
+  <script src="app.js?v=ppic-sheet-logic-2"></script>
+</body>
+</html>

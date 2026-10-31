@@ -1,0 +1,3 @@
+[functions.ppic-live]
+verify_jwt = false
+
