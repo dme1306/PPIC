@@ -31,6 +31,11 @@ Configure these secrets in the Supabase project:
 
 - GOOGLE_SERVICE_ACCOUNT_JSON: service account JSON key. Keep it in Supabase secrets only.
 - ALLOWED_EMAILS: comma-separated Google account emails allowed to use the dashboard.
+- PPIC_SOURCES_JSON: JSON array of the seven source sheet IDs and their workflow profiles.
+- PPIC_TRACKERS_JSON: JSON array of the six customer tracking sheet IDs.
+- PPIC_REMARKS_SPREADSHEET_ID: ID of the workbook containing the PPIC Remarks tab.
+
+Keep all spreadsheet IDs in Supabase secrets. Do not add them to this public repository. Use `core` for Crius, Medella, Samson, and Anuttama; `regional` for Orbit and Chiros/Sig; and `chimak` for Chimak. The source setting uses objects shaped like `{"name":"Crius","id":"SHEET_ID","profile":"core","skipDrug":true}`. Tracker objects use `{"name":"Crius","id":"SHEET_ID"}`. Add the six tracker books for Crius, Samson, Chiros/Sig, Anuttama, Chimak, and Orbit.
 
 The service account needs Viewer access to:
 
