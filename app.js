@@ -231,7 +231,7 @@
     $("refreshBtn").disabled = true;
     $("refreshBtn").textContent = "Loading…";
     try {
-      var response = await fetch(config.SUPABASE_URL + "/functions/v1/" + (config.FUNCTION_NAME || "ppic-fms"), {
+      var response = await fetch(config.SUPABASE_URL + "/functions/v1/" + (config.FUNCTION_NAME || "ppic-live"), {
         method: "GET",
         headers: { apikey: config.SUPABASE_PUBLISHABLE_KEY },
         cache: "no-store"
