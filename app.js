@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var config = window.FMS_CONFIG || {};
+  var config = window.PPIC_CONFIG || {};
   var dashboardData = { tasks: [], specTasks: [], sources: [], warnings: [] };
   var activeView = "all";
   var isLoading = false;
@@ -50,26 +50,33 @@
     }) : (value ? String(value) : "—");
   }
 
-  function ageLabel(hours) {
-    if (hours === null || hours === undefined || !Number.isFinite(Number(hours))) return "—";
-    var rounded = Math.round(Number(hours));
-    if (rounded < 0) return "Due in " + Math.abs(rounded) + "h";
-    if (rounded >= 24) return Math.floor(rounded / 24) + "d " + (rounded % 24) + "h";
-    return rounded + "h";
-  }
-
   function distinctTasks(rows) {
     return new Set(rows.map(function (row) { return row.source + "|" + row.sourceRow; })).size;
   }
 
+  function isExcludedFromRaw(row) {
+    return String(row.status === null || row.status === undefined ? "" : row.status).trim() === "Cancel";
+  }
+
+  function isExcludedFromMain(row) {
+    var status = String(row.status === null || row.status === undefined ? "" : row.status).trim();
+    return status === "Cancel" || status === "CANCEL";
+  }
+
+  function mainRows() {
+    return (dashboardData.tasks || []).filter(function (row) {
+      return !isExcludedFromMain(row) && normalize(row.productionFlag) !== "yes";
+    });
+  }
+
   function currentRows() {
-    if (activeView === "spec") return dashboardData.specTasks || [];
+    if (activeView === "spec") return (dashboardData.specTasks || []).filter(function (row) { return !isExcludedFromMain(row); });
     if (activeView === "aging") {
       return (dashboardData.tasks || []).filter(function (row) {
-        return Number(row.orderAgeDays) >= 5;
+        return !isExcludedFromRaw(row) && Number(row.orderAgeDays) > 4;
       });
     }
-    return dashboardData.tasks || [];
+    return mainRows();
   }
 
   function filteredRows() {
@@ -77,51 +84,43 @@
     var source = $("sourceFilter").value;
     var team = $("teamFilter").value;
     var stage = $("stageFilter").value;
-    var production = $("productionFilter").value;
     var due = $("dueFilter").value;
 
     return currentRows().filter(function (row) {
       var haystack = [
-        row.source, row.ref, row.company, row.product, row.orderStatus, row.status,
-        row.step, row.team, row.owner, row.remarks, row.ppicRemark
+        row.source, row.location, row.ref, row.company, row.product, row.orderStatus, row.status,
+        row.step, row.team, row.owner, row.concernEmail, row.customerSalesDate, row.remarks, row.ppicRemark
       ].join(" ").toLowerCase();
-      var flag = normalize(row.productionFlag);
-      var hasProductionFlag = flag !== "" && flag !== "unknown";
-      var isProductionYes = flag === "yes";
 
       return (!search || haystack.indexOf(search) !== -1) &&
         (!source || row.source === source) &&
         (!team || row.team === team) &&
         (!stage || row.step === stage) &&
-        (!production ||
-          (production === "yes" && isProductionYes) ||
-          (production === "no" && hasProductionFlag && !isProductionYes) ||
-          (production === "unknown" && !hasProductionFlag)) &&
         (!due || (due === "overdue" ? Boolean(row.overdue) : !row.overdue));
     });
   }
 
   function renderMetrics() {
-    var tasks = dashboardData.tasks || [];
+    var tasks = mainRows();
     $("ordersMetric").textContent = distinctTasks(tasks).toLocaleString("en-IN");
     $("tasksMetric").textContent = tasks.length.toLocaleString("en-IN");
     $("overdueMetric").textContent = tasks.filter(function (row) { return row.overdue; }).length.toLocaleString("en-IN");
 
-    var agingOrders = new Set(tasks.filter(function (row) {
-      return Number(row.orderAgeDays) >= 5;
+    var agingOrders = new Set((dashboardData.tasks || []).filter(function (row) {
+      return !isExcludedFromRaw(row) && Number(row.orderAgeDays) > 4;
     }).map(function (row) { return row.source + "|" + row.sourceRow; }));
     $("agingMetric").textContent = agingOrders.size.toLocaleString("en-IN");
   }
 
   function renderBottlenecks() {
     var totals = new Map();
-    (dashboardData.tasks || []).forEach(function (row) {
+    mainRows().forEach(function (row) {
       var label = row.team || "Unassigned";
       totals.set(label, (totals.get(label) || 0) + 1);
     });
     var sorted = Array.from(totals.entries()).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 6);
     var max = sorted.length ? sorted[0][1] : 1;
-    $("bottleneckTotal").textContent = (dashboardData.tasks || []).length.toLocaleString("en-IN") + " tasks";
+    $("bottleneckTotal").textContent = mainRows().length.toLocaleString("en-IN") + " tasks";
     $("bottleneckList").innerHTML = sorted.length ? sorted.map(function (entry) {
       var width = Math.max(4, Math.round((entry[1] / max) * 100));
       return "<div class='bottleneck-row'><span class='bottleneck-name'>" + esc(entry[0]) +
@@ -167,9 +166,6 @@
       " of " + currentRows().length.toLocaleString("en-IN") + " tasks in this view";
 
     $("tableBody").innerHTML = rows.length ? rows.map(function (row) {
-      var note = [row.remarks, row.ppicRemark].filter(function (value) {
-        return value !== null && value !== undefined && String(value).trim() !== "";
-      }).join(" · ");
       var status = row.overdue ? "<span class='state-pill overdue-pill'>Past due</span>" : "<span class='state-pill current-pill'>On plan</span>";
       var prod = normalize(row.productionFlag) === "yes" ?
         "<span class='state-pill production-pill'>Yes</span>" :
@@ -177,29 +173,34 @@
       var sourceLink = String(row.sourceUrl || "");
       var linkHtml = sourceLink.indexOf("https://docs.google.com/spreadsheets/") === 0 ?
         "<a class='source-link' href='" + esc(sourceLink) + "' target='_blank' rel='noopener noreferrer'>Open row ↗</a>" : "—";
-      var stepAge = ageLabel(row.stepAgeHours);
       var ageClass = row.overdue ? "age overdue-text" : "age";
 
       return "<tr>" +
-        "<td><span class='source-chip'>" + esc(row.source || "—") + "</span></td>" +
+        "<td><span class='source-chip'>" + esc(row.location || row.source || "—") + "</span></td>" +
+        "<td>" + esc(fmtDate(row.timestamp)) + "</td>" +
         "<td><strong class='ref-number'>" + esc(row.ref || "—") + "</strong></td>" +
-        "<td class='company-cell'><strong>" + esc(row.company || "—") + "</strong><span>" + esc(row.product || "—") + "</span></td>" +
-        "<td>" + esc(row.orderStatus || row.status || "—") + "</td>" +
+        "<td class='company-cell'><strong>" + esc(row.company || "—") + "</strong></td>" +
+        "<td>" + esc(row.product || "—") + "</td>" +
+        "<td>" + esc(row.orderStatus || "—") + "</td>" +
+        "<td class='remarks-cell' title='" + esc(row.remarks || "") + "'>" + esc(row.remarks || "—") + "</td>" +
+        "<td>" + esc(row.status || "—") + "</td>" +
         "<td><strong>" + esc(row.step || "—") + "</strong><span class='subtle'>" + esc(row.owner || "") + "</span></td>" +
         "<td>" + esc(row.team || "Unassigned") + "</td>" +
-        "<td>" + esc(fmtDate(row.planned)) + "<span class='subtle'>" + status + "</span></td>" +
-        "<td class='" + ageClass + "'>" + esc(stepAge) + "</td>" +
+        "<td>" + esc(fmtDate(row.planned)) + "</td>" +
+        "<td class='" + ageClass + "'>" + (row.stepAgeHours === null || row.stepAgeHours === undefined ? "—" : esc(Math.round(Number(row.stepAgeHours)) + " h")) + "<span class='subtle'>" + status + "</span></td>" +
+        "<td>" + esc(fmtDate(row.customerSalesDate)) + "</td>" +
+        "<td>" + esc(row.concernEmail || "—") + "</td>" +
         "<td>" + (row.orderAgeDays === null || row.orderAgeDays === undefined ? "—" : esc(row.orderAgeDays + " days")) + "</td>" +
         "<td>" + prod + "</td>" +
-        "<td class='remarks-cell' title='" + esc(note) + "'>" + esc(note || "—") + "</td>" +
+        "<td class='remarks-cell' title='" + esc(row.ppicRemark || "") + "'>" + esc(row.ppicRemark || "—") + "</td>" +
         "<td>" + linkHtml + "</td>" +
         "</tr>";
-    }).join("") : "<tr><td colspan='12' class='empty'>No pending tasks match these filters.</td></tr>";
+    }).join("") : "<tr><td colspan='18' class='empty'>No pending tasks match these filters.</td></tr>";
 
     var headings = {
-      all: ["All pending work", "One row per pending workflow group, linked to its original source row."],
-      spec: ["QA / spec approval pending", "Orders where the QA / product specification step is planned and its completion field is blank."],
-      aging: ["Orders aged 5+ days", "Pending tasks for orders at least five calendar days old."]
+      all: ["Main escalation queue", "Follows Main: omits cancelled rows and orders marked Yes in the production file."],
+      spec: ["QA / spec approval pending", "Pending QA / product specification stage: its trigger date is filled and completion is blank."],
+      aging: ["Orders aged 5+ days", "Follows 5 Days: calculated age greater than four days, including production-file Yes rows." ]
     };
     $("queueTitle").textContent = headings[activeView][0];
     $("queueDescription").textContent = headings[activeView][1];
@@ -280,12 +281,12 @@
     $("navAll").addEventListener("click", function () { setView("all"); });
     $("navSpec").addEventListener("click", function () { setView("spec"); });
     $("navAging").addEventListener("click", function () { setView("aging"); });
-    ["searchInput", "sourceFilter", "teamFilter", "stageFilter", "productionFilter", "dueFilter"].forEach(function (id) {
+    ["searchInput", "sourceFilter", "teamFilter", "stageFilter", "dueFilter"].forEach(function (id) {
       $(id).addEventListener("input", renderTable);
       $(id).addEventListener("change", renderTable);
     });
     $("clearFilters").addEventListener("click", function () {
-      ["searchInput", "sourceFilter", "teamFilter", "stageFilter", "productionFilter", "dueFilter"].forEach(function (id) {
+      ["searchInput", "sourceFilter", "teamFilter", "stageFilter", "dueFilter"].forEach(function (id) {
         $(id).value = "";
       });
       renderTable();
@@ -302,4 +303,3 @@
 
   init();
 })();
-
